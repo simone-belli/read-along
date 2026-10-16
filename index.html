@@ -173,10 +173,6 @@
       </label>
       <span id="filename" class="filename"></span>
       <span class="spacer"></span>
-      <label class="field">Engine
-        <select id="engine"><option value="eleven">ElevenLabs</option><option value="system">System voice</option></select>
-      </label>
-      <label class="field">Voice <select id="voice"></select></label>
       <label class="field">Speed
         <select id="rate">
           <option>0.8</option><option>0.9</option><option selected>1</option><option>1.1</option>
@@ -187,6 +183,10 @@
       <button id="gear" title="Settings"><svg viewBox="0 0 24 24"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3h-4l-.4 2.9a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.4 7.4 0 0 0 1.7 1L11 21h4l.4-2.9a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg></button>
     </div>
     <div class="row settings" id="settings" hidden>
+      <label class="field">Engine
+        <select id="engine"><option value="eleven">ElevenLabs</option><option value="system">System voice</option></select>
+      </label>
+      <label class="field">Voice <select id="voice"></select></label>
       <label class="field">Model
         <select id="model">
           <option value="eleven_flash_v2_5">Flash v2.5 (½ credit/char)</option>
@@ -238,7 +238,7 @@ This page reads Markdown aloud while you follow the text. Unread text is grey, e
 - Press **Space** to play or pause, and the **left and right arrows** to step back or forward one sentence.
 - Drag the bar to jump anywhere, or double-click any sentence to start reading from there.
 - Open a `.md` file with the button above, drop one onto the page, or paste Markdown anywhere.
-- For natural voices, pick **ElevenLabs** as the engine and paste your API key under Settings (the gear icon).
+- For natural voices, open Settings (the gear icon), pick **ElevenLabs** as the engine and paste your API key. Voices are chosen there too.
 
 ## Maths
 
@@ -787,7 +787,7 @@ def mean(xs):
       detail = (d && (d.message || d.status)) || (typeof d === 'string' ? d : '') || '';
     } catch { /* not JSON */ }
     if (/quota|credit/i.test(detail) || res.status === 402) {
-      return new ElError('quota', 'You are out of ElevenLabs credits for this month. Switch Engine to "System voice" to keep listening.');
+      return new ElError('quota', 'You are out of ElevenLabs credits for this month. Switch Engine to "System voice" in Settings to keep listening.');
     }
     if (res.status === 401) return new ElError('auth', 'ElevenLabs rejected the API key. Check it under Settings.' + (detail ? ' (' + detail + ')' : ''));
     if (res.status === 429) return new ElError('busy', 'ElevenLabs is busy or rate-limiting. Try again in a moment.');
@@ -1394,7 +1394,7 @@ def mean(xs):
     setStatus('Could not load the Markdown renderer. Check your internet connection and reload.');
   } else {
     loadMarkdown($('sample').textContent.trim(), 'Sample').then(() => {
-      if (engine() === 'eleven' && !apiKey()) openSettings('Paste your ElevenLabs API key to use ElevenLabs voices, or switch Engine to "System voice".');
+      if (engine() === 'eleven' && !apiKey()) openSettings('Paste your ElevenLabs API key to use ElevenLabs voices, or switch Engine to "System voice" in Settings.');
     });
   }
 })();

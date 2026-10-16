@@ -126,8 +126,11 @@ def test_rendering_and_playback(browser):
     page.wait_for_function("[...document.querySelectorAll('#voice option')].some(o => o.value === 'v_charlie')", timeout=5000)
     check(True, 'voice list is fetched from ElevenLabs')
     check(page.is_hidden('#settings'), 'settings stay hidden when a key is already saved')
+    check(page.is_hidden('#engine') and page.is_hidden('#voice'), 'engine and voice pickers live in settings, not the toolbar')
 
+    page.click('#gear')
     page.select_option('#voice', 'v_charlie')
+    page.click('#gear')
     page.click('#play')
     page.wait_for_timeout(1500)
     w1 = page.evaluate(WORD)
@@ -165,6 +168,7 @@ def test_rendering_and_playback(browser):
 
     fake.reject_key = True
     page.click('#gear')
+    check(not page.is_hidden('#voice'), 'the gear reveals the voice picker')
     page.select_option('#model', 'eleven_multilingual_v2')     # forces fresh generation
     page.click('#play')
     page.wait_for_timeout(1000)
@@ -178,6 +182,7 @@ def test_key_handling(browser):
     print('\n# API key handling')
     page, fake, errors = open_page(browser)
     check(page.is_hidden('#settings'), 'with no key, the page starts on the system voice with settings closed')
+    page.click('#gear')
     page.select_option('#engine', 'eleven')
     check(not page.is_hidden('#keyRow'), 'choosing ElevenLabs without a key offers the key field')
     page.fill('#apikey', 'abc123')
