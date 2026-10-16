@@ -27,7 +27,7 @@
     viewport: () => ({ top: 16, bottom: window.innerHeight - 60 }),
     // called before the reader moves into a new block (e.g. to open a collapsed section)
     reveal: null,
-    // whether the keyboard shortcuts (Space, ←/→, Esc) are live right now
+    // whether the shortcuts (Space, ←/→, Esc, double-click to jump) are live for this event
     keys: () => true
   };
 
@@ -978,7 +978,7 @@
     document.addEventListener('keydown', (e) => {
       const t = e.target;
       if (t.closest && t.closest('input, select, textarea')) return;
-      if (!opts.keys()) return;
+      if (!opts.keys(e)) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.code === 'Space') {
         if (t.closest && t.closest('button, label')) return;   // let the focused button handle it
@@ -1024,7 +1024,7 @@
     }
 
     root.addEventListener('dblclick', (e) => {
-      if (e.target.closest('a')) return;
+      if (e.target.closest('a') || !opts.keys(e)) return;
       const ci = chunkAtPoint(e.clientX, e.clientY);
       if (ci == null) return;
       const sel = window.getSelection();

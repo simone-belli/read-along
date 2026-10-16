@@ -252,8 +252,9 @@ def test_embedding(browser):
     page.wait_for_function("document.getElementById('status').textContent.includes('sentences')", timeout=10000)
 
     page.keyboard.press('Space')
+    page.dblclick('#root p')
     page.wait_for_timeout(300)
-    check(not page.evaluate('ra.isPlaying()'), 'keyboard shortcuts stay off while the host says so')
+    check(not page.evaluate('ra.isPlaying()'), 'keyboard and double-click shortcuts stay off while the host says so')
     page.evaluate('window.keysOn = true')
     page.keyboard.press('Space')
     page.wait_for_function("document.getElementById('status').textContent === 'Finished.'", timeout=20000)
