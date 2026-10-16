@@ -43,6 +43,17 @@ Read Markdown while hearing it read aloud. The text is shown the way Cursor's Ma
 
 It's a single file with no build step: open `index.html` in Chrome, Edge or Safari. It loads markdown-it, highlight.js and MathJax from public CDNs, so it needs an internet connection.
 
+## Development
+
+Everything lives in `index.html`. Browser tests with a simulated ElevenLabs API are in `tests/`:
+
+```
+pip install playwright && playwright install chromium
+python3 tests/e2e.py
+```
+
+`CLAUDE.md` describes how the page is built, for anyone (or any Claude session) working on it.
+
 ## Limitations
 
 - Formulas are spoken in a simplified way, such as "x squared over 2 sigma squared". The rendering on screen is exact.

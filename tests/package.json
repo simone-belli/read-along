@@ -1,0 +1,8 @@
+{
+  "private": true,
+  "description": "Local copies of the CDN libraries used by index.html, so the tests run without network access.",
+  "devDependencies": {
+    "markdown-it": "14.1.0",
+    "mathjax": "3.2.2"
+  }
+}
