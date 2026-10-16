@@ -4,7 +4,7 @@
 
 Read Markdown while hearing it read aloud. The text is shown the way Cursor's Markdown preview shows it, LaTeX included, and the words are highlighted as they're spoken, so your eyes and ears follow the same line.
 
-**Try it:** https://YOUR-USERNAME.github.io/read-along/
+**Try it:** https://simone-belli.github.io/read-along/
 
 ## Features
 
