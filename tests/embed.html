@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Engine embed fixture</title>
+<!-- Test fixture: engine.js on a page shaped like a Material for MkDocs page with KaTeX,
+     driven through the embedding options (selectors, tex(), reveal, keys). -->
+</head>
+<body>
+<article id="root">
+  <h1 id="title">Embedded page<a class="headerlink" href="#title">¶</a></h1>
+  <p>The square <span class="arithmatex"><span class="katex"><span class="katex-mathml"><math><annotation encoding="application/x-tex">x^2</annotation></math></span><span class="katex-html">x2</span></span></span> grows fast.</p>
+  <div class="arithmatex"><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><annotation encoding="application/x-tex">a = b</annotation></math></span><span class="katex-html">a=b</span></span></span></div>
+  <pre><code>print("never read")</code></pre>
+  <details><summary>Spoiler title</summary><p>Hidden spoiler text.</p></details>
+  <div id="collapsed" hidden><p>Text from a collapsed section.</p></div>
+</article>
+
+<div id="player">
+  <button id="play"></button><button id="prev"></button><button id="next"></button><button id="stop"></button>
+  <input type="range" id="scrub" min="0" max="0" value="0"><span id="time"></span>
+  <select id="rate"><option>1</option></select><input type="checkbox" id="follow" checked>
+  <input type="checkbox" id="pauseBlocks"><button id="gear"></button>
+  <div id="settings" hidden>
+    <select id="engine"><option value="eleven">ElevenLabs</option><option value="system">System voice</option></select>
+    <select id="voice"></select>
+    <select id="model"><option value="eleven_flash_v2_5">Flash</option></select>
+    <span id="credits"></span><span id="keyStatus"></span><button id="changeKey"></button>
+  </div>
+  <div id="keyRow" hidden><input id="apikey"><button id="saveKey"></button><button id="cancelKey"></button></div>
+  <div id="status"></div>
+</div>
+
+<script src="../engine.js"></script>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const UI_IDS = ['play', 'prev', 'next', 'stop', 'scrub', 'time', 'status', 'rate', 'follow', 'pauseBlocks',
+    'engine', 'voice', 'model', 'gear', 'settings', 'keyRow', 'apikey', 'saveKey', 'cancelKey', 'changeKey', 'keyStatus', 'credits'];
+  window.revealed = [];
+  window.keysOn = false;
+  window.ra = ReadAlong.create({
+    root: $('root'),
+    ui: Object.fromEntries(UI_IDS.map((id) => [id, $(id)])),
+    blockSelector: 'h1,h2,h3,h4,h5,h6,p,li,td,th,dt,dd,figcaption,summary,div.arithmatex',
+    skipSelector: 'pre, script, style, .headerlink, details:not([open]) > :not(summary)',
+    mathSelector: '.arithmatex',
+    displayMathSelector: 'div.arithmatex',
+    tex: (el) => { const a = el.querySelector('annotation[encoding="application/x-tex"]'); return a ? a.textContent : ''; },
+    reveal: (el) => { const h = el.closest('[hidden]'); if (h) { h.hidden = false; window.revealed.push(el.textContent); } },
+    keys: () => window.keysOn
+  });
+  ra.refresh();
+  ra.setStatus(ra.summary());
+</script>
+</body>
+</html>
