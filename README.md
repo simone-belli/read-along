@@ -1,0 +1,54 @@
+<p align="center"><img src="logo.svg" width="96" alt="Read Along logo"></p>
+
+# Read Along
+
+Read Markdown while hearing it read aloud. The text is shown the way Cursor's Markdown preview shows it, LaTeX included, and the words are highlighted as they're spoken, so your eyes and ears follow the same line.
+
+**Try it:** https://YOUR-USERNAME.github.io/read-along/
+
+## Features
+
+- **Read-along highlighting.** Unread text is grey, spoken text turns bright, the current sentence is tinted and the current word is marked.
+- **Proper rendering.** Headings, lists, tables, code with syntax colouring, and LaTeX via MathJax (`$…$` inline, `$$…$$` display).
+- **Two voice engines.**
+  - **ElevenLabs:** natural voices with exact per-word timing (needs your own API key).
+  - **System voice:** the browser's built-in voices. Free and offline, but robotic.
+- **Full playback control.** Play/pause, previous/next sentence, a scrubber with elapsed and total time, speed from 0.8× to 2×, and auto-scroll that follows the reading.
+- **Pause at blocks.** Optionally stops before each code block, display formula or table so you can read it, then carries on when you press Play.
+- **Easy loading.** Open a `.md` file, drag one onto the page, or paste Markdown anywhere.
+
+## Keyboard
+
+| Key | Action |
+|-----|--------|
+| Space | Play / pause |
+| ← / → | Previous / next sentence |
+| Esc | Stop |
+| Double-click a sentence | Start reading from there |
+
+## Using ElevenLabs voices
+
+1. Create an API key at [elevenlabs.io](https://elevenlabs.io) under **Developers → API Keys**. Give it these permissions:
+   - **Text to Speech** (required)
+   - **Voices: read** (required, to list your voices)
+   - **User: read** (optional; lets the page show your remaining credits)
+2. Copy the key itself. It starts with `sk_` and is shown only once, when the key is created. The key *ID* in the list won't work.
+3. In Read Along, click the gear icon, then **Add key**, and paste it.
+
+**Costs.** The free plan includes about 10,000 credits a month. The Flash model uses about ½ credit per character and Multilingual v2 uses 1. The page shows what a document will cost before you play it. Generated audio is cached in your browser, so replaying, pausing and skipping around cost nothing extra.
+
+**Privacy.** Your key is stored only in your browser's local storage and is sent only to ElevenLabs. It is never part of this repository. The text you play is sent to ElevenLabs to be spoken.
+
+## Running it locally
+
+It's a single file with no build step: open `index.html` in Chrome, Edge or Safari. It loads markdown-it, highlight.js and MathJax from public CDNs, so it needs an internet connection.
+
+## Limitations
+
+- Formulas are spoken in a simplified way, such as "x squared over 2 sigma squared". The rendering on screen is exact.
+- With the system voice, word-level highlighting depends on the voice. Some only report timing per sentence.
+- Relative image paths in a Markdown file won't load, because the page can't see the file's folder.
+
+## License
+
+[MIT](LICENSE) © 2026 Simone
