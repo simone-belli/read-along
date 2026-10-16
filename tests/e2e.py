@@ -121,6 +121,8 @@ def test_rendering_and_playback(browser):
     print('\n# Rendering and ElevenLabs playback')
     page, fake, errors = open_page(browser, key='sk_test')
     check(page.locator('mjx-container').count() >= 3, 'LaTeX is rendered by MathJax')
+    check(page.is_visible('#hero .logo') and page.locator('.credit .logo').count() == 1, 'the logo is shown on the welcome page and in the footer')
+    check(page.evaluate("document.querySelector('.brand .logo').getBoundingClientRect().width") > 0, 'the toolbar logo renders from the shared symbol')
     check('credits' in page.text_content('#status'), 'cost estimate is shown for ElevenLabs')
     check(page.eval_on_selector('#engine', 'e => e.value') == 'eleven', 'engine defaults to ElevenLabs when a key is saved')
     page.wait_for_function("[...document.querySelectorAll('#voice option')].some(o => o.value === 'v_charlie')", timeout=5000)

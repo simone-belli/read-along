@@ -9,7 +9,7 @@ Live site: https://simone-belli.github.io/read-along/ (GitHub Pages, deployed fr
 - `index.html`: the entire app. One self-contained page, no build step, no server.
 - `tests/e2e.py`: end-to-end browser tests (Playwright, Python) with a simulated ElevenLabs API.
 - `tests/package.json`: local copies of the CDN libraries, so the tests can run offline.
-- `README.md`, `LICENSE`, `logo.svg`: user-facing docs, MIT license, logo (also inlined in `index.html`).
+- `README.md`, `LICENSE`, `logo.svg`: user-facing docs, MIT license, logo. `index.html` inlines the logo once as `<symbol id="logo-mark">` and reuses it with `<use>` (toolbar, welcome page, footer, drop overlay); the favicon is a separate data URI copy.
 
 ## Ground rules
 

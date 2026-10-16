@@ -59,7 +59,10 @@
     display: flex; flex-direction: column; gap: 8px;
   }
   .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 15px; color: var(--heading); margin-right: 6px; white-space: nowrap; }
-  .brand .logo { width: 26px; height: 26px; flex: none; }
+  .logo { fill: var(--accent); }
+  .brand .logo { width: 28px; height: 28px; flex: none; }
+  .hero { text-align: center; margin-bottom: 8px; }
+  .hero .logo { width: 96px; height: 96px; }
   .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .spacer { flex: 1; }
   .btn, button, select {
@@ -137,6 +140,7 @@
     margin-top: 3em; padding-top: 1em; border-top: 1px solid var(--border);
     font-size: 12px; color: var(--dim); text-align: center;
   }
+  .credit .logo { width: 16px; height: 16px; vertical-align: -3px; margin-right: 6px; }
 
   /* ---------- drag & drop ---------- */
   .drop {
@@ -145,6 +149,7 @@
     font-size: 18px; color: var(--text); pointer-events: none;
   }
   body.dragging .drop { display: grid; }
+  .drop .logo { display: block; width: 120px; height: 120px; margin: 0 auto 16px; }
 
   /* ---------- settings ---------- */
   .settings { padding-top: 4px; border-top: 1px dashed var(--border); }
@@ -163,11 +168,12 @@
 </style>
 </head>
 <body>
+<svg hidden><symbol id="logo-mark" viewBox="0 0 64 64"><rect x="9" y="25" width="4.5" height="8" rx="2.25"/> <rect x="16.5" y="17" width="4.5" height="16" rx="2.25"/> <rect x="24" y="21" width="4.5" height="12" rx="2.25"/> <rect x="35.5" y="13" width="4.5" height="20" rx="2.25"/> <rect x="43" y="20" width="4.5" height="13" rx="2.25"/> <rect x="50.5" y="26" width="4.5" height="7" rx="2.25"/> <path d="M30.5 39 C23 35.5 14 35.5 5 38 V54 C14 51.5 23 51.5 30.5 55 Z"/> <path d="M33.5 39 C41 35.5 50 35.5 59 38 V54 C50 51.5 41 51.5 33.5 55 Z"/></symbol></svg>
 
 <header class="toolbar" id="toolbar">
   <div class="toolbar-inner">
     <div class="row">
-      <span class="brand"><svg class="logo" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="#3794ff"> <rect x="9" y="25" width="4.5" height="8" rx="2.25"/> <rect x="16.5" y="17" width="4.5" height="16" rx="2.25"/> <rect x="24" y="21" width="4.5" height="12" rx="2.25"/> <rect x="35.5" y="13" width="4.5" height="20" rx="2.25"/> <rect x="43" y="20" width="4.5" height="13" rx="2.25"/> <rect x="50.5" y="26" width="4.5" height="7" rx="2.25"/> <path d="M30.5 39 C23 35.5 14 35.5 5 38 V54 C14 51.5 23 51.5 30.5 55 Z"/> <path d="M33.5 39 C41 35.5 50 35.5 59 38 V54 C50 51.5 41 51.5 33.5 55 Z"/> </svg><span>Read Along</span></span>
+      <span class="brand"><svg class="logo" aria-hidden="true"><use href="#logo-mark"/></svg><span>Read Along</span></span>
       <label class="btn" title="Open a Markdown file">Open…
         <input type="file" id="file" accept=".md,.markdown,.mdown,.txt,text/markdown,text/plain" hidden>
       </label>
@@ -222,10 +228,10 @@
   </div>
 </header>
 
-<main><article id="doc"></article>
-  <footer class="credit">Built by Simone Belli · 2026 · MIT License</footer>
+<main><div class="hero" id="hero" hidden><svg class="logo" aria-hidden="true"><use href="#logo-mark"/></svg></div><article id="doc"></article>
+  <footer class="credit"><svg class="logo" aria-hidden="true"><use href="#logo-mark"/></svg>Built by Simone Belli · 2026 · MIT License</footer>
 </main>
-<div class="drop">Drop a Markdown file to open it</div>
+<div class="drop"><div><svg class="logo" aria-hidden="true"><use href="#logo-mark"/></svg>Drop a Markdown file to open it</div></div>
 
 <!-- Sample document shown on first load -->
 <script type="text/markdown" id="sample">
@@ -1267,6 +1273,7 @@ def mean(xs):
     if (window.MathJax && MathJax.typesetClear) MathJax.typesetClear([doc]);
     doc.innerHTML = renderMarkdown(src);
     $('filename').textContent = name;
+    $('hero').hidden = name !== 'Sample';   // big logo only on the welcome page
     document.title = name + ' · Read Along';
     window.scrollTo(0, 0);
     setStatus('Rendering…');
