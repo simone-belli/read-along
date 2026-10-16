@@ -51,4 +51,4 @@ It's a single file with no build step: open `index.html` in Chrome, Edge or Safa
 
 ## License
 
-[MIT](LICENSE) © 2026 Simone
+[MIT](LICENSE) © 2026 Simone Belli
