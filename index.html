@@ -125,7 +125,7 @@
   #doc.active .math { opacity: 0.4; transition: opacity 0.15s; }
   #doc.active .math.read { opacity: 1; }
   #doc.active pre.read { opacity: 1; }
-  #doc .stop-here { outline: 2px solid var(--accent); outline-offset: 5px; border-radius: 6px; opacity: 1 !important; }
+  #doc [data-ra-stop] { outline: 2px solid var(--accent); outline-offset: 5px; border-radius: 6px; opacity: 1 !important; }
   #doc .math.now { background: rgba(55, 148, 255, 0.3); border-radius: 4px; }
   ::highlight(tts-read) { color: var(--text); }
   ::highlight(tts-sentence) { background-color: rgba(55, 148, 255, 0.13); }
@@ -134,7 +134,7 @@
   /* Fallback for browsers without the CSS Custom Highlight API: tint the current block */
   .no-hl #doc.active, .no-hl #doc.active :is(h1, h2, h3, h4, h5, h6) { color: var(--text); }
   .no-hl #doc.active .math { opacity: 1; }
-  #doc .current-block { background: rgba(55, 148, 255, 0.13); box-shadow: 0 0 0 4px rgba(55, 148, 255, 0.13); border-radius: 3px; }
+  #doc [data-ra-current] { background: rgba(55, 148, 255, 0.13); box-shadow: 0 0 0 4px rgba(55, 148, 255, 0.13); border-radius: 3px; }
 
   .credit {
     margin-top: 3em; padding-top: 1em; border-top: 1px solid var(--border);

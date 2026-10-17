@@ -177,28 +177,33 @@
       markStops();
     }
 
-    // Stop points: the first sentence at/after each code block, display formula or table.
+    // Stop points for "Pause at blocks": each code block, table or display formula is attached
+    // to the first sentence after it (that sentence's `stops`). Sentences inside a table or a
+    // display formula get `inBlock`; while pausing at blocks they are skipped, not read.
     let preEls = [];
     function markStops() {
       preEls = [...root.querySelectorAll('pre')];
-      for (const c of chunks) c.stops = null;
+      for (const c of chunks) { c.stops = null; c.inBlock = null; }
       const add = (c, el) => { if (c) (c.stops || (c.stops = [])).push(el); };
+      const follows = (el) => (c) => {
+        const r = el.compareDocumentPosition(c.block.el);
+        return (r & Node.DOCUMENT_POSITION_FOLLOWING) && !(r & Node.DOCUMENT_POSITION_CONTAINS);
+      };
       for (const el of root.querySelectorAll('pre, table, ' + DISPLAY_SEL)) {
-        let target = null;
+        let inside = () => false, fallback = follows(el);
         if (el.matches(DISPLAY_SEL)) {
           const host = el.closest(BLOCK_SEL);
           const b = blocks.find((x) => x.el === host);
           const seg = b && b.segs.find((s) => s.node === el);
-          if (seg) target = chunks.find((c) => c.block === b && c.end > seg.start);
+          if (!seg) continue;
+          inside = (c) => c.block === b && c.start >= seg.start && c.end <= seg.end;
+          fallback = (c) => c.block === b && c.end > seg.start;   // a formula inside a sentence: stop at that sentence
         } else if (el.matches('table')) {
-          target = chunks.find((c) => el.contains(c.block.el));
-        } else {
-          target = chunks.find((c) => {
-            const r = el.compareDocumentPosition(c.block.el);
-            return (r & Node.DOCUMENT_POSITION_FOLLOWING) && !(r & Node.DOCUMENT_POSITION_CONTAINS);
-          });
+          inside = (c) => el.contains(c.block.el);
         }
-        add(target, el);
+        let last = -1;
+        chunks.forEach((c, i) => { if (inside(c)) { c.inBlock = c.inBlock || el; last = i; } });
+        add(last >= 0 ? chunks[last + 1] : chunks.find(fallback), el);
       }
     }
     const BLOCK_NAMES = (els) => {
@@ -271,9 +276,9 @@
         m.classList.toggle('now', !!wordRange && wordRange.intersectsNode(m));
       }
       if (currentBlockEl !== b.el) {
-        if (currentBlockEl) currentBlockEl.classList.remove('current-block');
+        if (currentBlockEl) currentBlockEl.removeAttribute('data-ra-current');
         currentBlockEl = b.el;
-        if (!HAS_HL) currentBlockEl.classList.add('current-block');
+        if (!HAS_HL) currentBlockEl.setAttribute('data-ra-current', '');
       }
       follow(wordRange || sentence);
     }
@@ -282,7 +287,7 @@
       if (hl) { hl.read.clear(); hl.sentence.clear(); hl.word.clear(); }
       for (const m of mathEls) m.classList.remove('read', 'now');
       for (const pe of preEls) pe.classList.remove('read');
-      if (currentBlockEl) currentBlockEl.classList.remove('current-block');
+      if (currentBlockEl) currentBlockEl.removeAttribute('data-ra-current');
       currentBlockEl = null;
       root.classList.remove('active');
     }
@@ -324,6 +329,8 @@
 
     function speakFrom(ci, off = 0) {
       const myGen = ++gen;
+      const r = readable(ci);
+      if (r !== ci) { ci = r; off = 0; }
       if (ci >= chunks.length) { finish(); return; }
       pos = { ci, off };
       const c = chunks[ci];
@@ -353,7 +360,8 @@
           warnedNoBoundary = true;
           setStatus('This voice does not report word timing, so tracking is per sentence.');
         }
-        if (shouldStopAt(ci + 1)) stopAt(ci + 1); else speakFrom(ci + 1, 0);
+        const next = readable(ci + 1);
+        if (shouldStopAt(next)) stopAt(next); else speakFrom(next, 0);
       };
       u.onerror = (e) => {
         if (myGen !== gen || e.error === 'interrupted' || e.error === 'canceled') return;
@@ -471,7 +479,7 @@
       EL.segs = []; EL.pending.clear(); EL.cur = -1; EL.rec = null; EL.dirty = true; EL.seeked = true;
       let seg = null;
       chunks.forEach((c, i) => {
-        if (!seg || seg.block !== c.block || c.stops || c.end - seg.start > 1200) {
+        if (!seg || seg.block !== c.block || c.stops || c.inBlock !== chunks[i - 1].inBlock || c.end - seg.start > 1200) {
           seg = { block: c.block, start: c.start, end: c.end, c0: i, c1: i };
           EL.segs.push(seg);
         } else {
@@ -542,6 +550,19 @@
 
     const prefetch = (i) => { if (i < EL.segs.length) fetchSeg(i).catch(() => {}); };
 
+    // The next n segments that will actually play after segment i (skipped ones are never fetched).
+    function upcoming(i, n) {
+      const out = [];
+      let ci = EL.segs[i].c1 + 1;
+      while (out.length < n) {
+        ci = readable(ci);
+        if (ci >= chunks.length) break;
+        out.push(chunks[ci].seg);
+        ci = EL.segs[chunks[ci].seg].c1 + 1;
+      }
+      return out;
+    }
+
     // char offset within a segment <-> time in its audio
     function timeAtOffset(rec, k, len) {
       const n = rec.starts.length;
@@ -565,6 +586,11 @@
       cancelAnimationFrame(EL.raf);
       EL.seeked = false;
       if (i >= EL.segs.length) { finish(); return; }
+      if (skipped(EL.segs[i].c0)) {   // a skipped table or formula: play what follows it instead
+        const n = readable(EL.segs[i].c0);
+        if (n >= chunks.length) { finish(); return; }
+        i = chunks[n].seg; atOff = chunks[n].start - EL.segs[i].start;
+      }
       const seg = EL.segs[i];
       const bOff = seg.start + atOff;
       const ci = chunkInSeg(seg, bOff);
@@ -606,8 +632,7 @@
       }
       if (myGen !== gen) { audio.pause(); return; }
       EL.raf = requestAnimationFrame(elTick);
-      prefetch(i + 1);
-      prefetch(i + 2);
+      upcoming(i, 2).forEach(prefetch);
     }
 
     function elTick() {
@@ -638,7 +663,7 @@
         if (myGen !== gen) { audio.pause(); return; }
         EL.lastK = -1;
         EL.raf = requestAnimationFrame(elTick);
-        prefetch(s + 1);
+        upcoming(s, 1).forEach(prefetch);
       }, () => { if (myGen === gen) { setStatus('The browser blocked audio playback. Press Play again.'); pause(); } });
     }
 
@@ -656,9 +681,10 @@
 
     audio.addEventListener('ended', () => {
       if (!(playing && engine() === 'eleven' && EL.cur >= 0 && audio.src === EL.url)) return;
-      const next = EL.cur + 1;
-      if (next < EL.segs.length && shouldStopAt(EL.segs[next].c0)) stopAt(EL.segs[next].c0);
-      else elPlaySeg(next, 0);
+      const n = readable(EL.segs[EL.cur].c1 + 1);
+      if (shouldStopAt(n)) stopAt(n);
+      else if (n >= chunks.length) finish();
+      else elPlaySeg(chunks[n].seg, chunks[n].start - EL.segs[chunks[n].seg].start);
     });
     audio.addEventListener('error', () => {
       if (playing && engine() === 'eleven' && audio.src === EL.url) { setStatus('Could not play the generated audio.'); pause(); }
@@ -703,8 +729,13 @@
     // ======================================================================
     const pauseBlocksOn = () => ui.pauseBlocks.checked;
     const shouldStopAt = (ci) => pauseBlocksOn() && ci > 0 && !!(chunks[ci] && chunks[ci].stops);
+    // While pausing at blocks, sentences inside a table or display formula are skipped, not read.
+    const skipped = (ci) => pauseBlocksOn() && !!(chunks[ci] && chunks[ci].inBlock);
+    function readable(ci, dir = 1) { while (skipped(ci)) ci += dir; return ci; }
+    // Stops are marked with an attribute, never a class: a class would break styles such as
+    // Material's `table:not([class])` and change how the block looks.
     let stopMarked = [];
-    function clearStopMark() { stopMarked.forEach((e) => e.classList.remove('stop-here')); stopMarked = []; }
+    function clearStopMark() { stopMarked.forEach((e) => e.removeAttribute('data-ra-stop')); stopMarked = []; }
 
     // Pause just before a code block / formula / table so it can be read.
     function stopAt(ci) {
@@ -718,7 +749,7 @@
       paint(ci, c.start, null);
       clearStopMark();
       stopMarked = c.stops || [];
-      stopMarked.forEach((e) => e.classList.add('stop-here'));
+      stopMarked.forEach((e) => e.setAttribute('data-ra-stop', ''));
       if (stopMarked[0] && ui.follow.checked) stopMarked[0].scrollIntoView({ block: 'center', behavior: 'smooth' });
       updateTime();
       setStatus(`Paused at ${BLOCK_NAMES(stopMarked)}. Press Play (or Space) to continue.`);
@@ -733,6 +764,11 @@
       } else if (!synth) {
         setStatus('This browser has no built-in speech. Choose ElevenLabs as the engine.');
         return;
+      }
+      const r = readable(pos.ci);
+      if (r !== pos.ci) {   // parked inside a table or formula that is now skipped
+        if (r >= chunks.length) { finish(); return; }
+        pos = { ci: r, off: 0 }; EL.seeked = true;
       }
       playing = true;
       updateButtons(); setStatus(''); startTicker();
@@ -772,6 +808,13 @@
     function seekChunk(ci) {
       if (!chunks.length) return;
       ci = Math.max(0, Math.min(chunks.length - 1, ci));
+      if (skipped(ci)) {   // landed in a skipped table or formula: step past it in the direction of travel
+        const dir = ci < pos.ci ? -1 : 1;
+        let r = readable(ci, dir);
+        if (r < 0 || r >= chunks.length) r = readable(ci, -dir);
+        if (r < 0 || r >= chunks.length) return;
+        ci = r;
+      }
       pos = { ci, off: 0 };
       EL.seeked = true;
       clearStopMark();
