@@ -206,6 +206,37 @@ def test_key_handling(browser):
     page.close()
 
 
+BLOCKS_DOC = """# Blocks
+
+Intro before the formula.
+
+$$
+a = b
+$$
+
+After the formula.
+
+| Key | Action |
+|-----|--------|
+| Tablecell | Secret |
+
+After the table.
+
+```python
+x = 1
+```
+
+The end.
+"""
+
+
+def paste(page, text):
+    page.evaluate("""(t) => { const dt = new DataTransfer(); dt.setData('text/plain', t);
+        document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt })); }""", text)
+    page.wait_for_function("document.getElementById('filename').textContent === 'Pasted text'"
+                           " && document.getElementById('status').textContent.includes('sentences')", timeout=20000)
+
+
 def test_pause_at_blocks(browser):
     print('\n# Pause at blocks')
     page, fake, errors = open_page(browser, key='sk_test')
@@ -214,28 +245,35 @@ def test_pause_at_blocks(browser):
     check(page.is_checked('#pauseBlocks2'), 'toolbar and settings tick boxes stay in sync')
     page.click('#gear')
     page.select_option('#rate', '2')
-    scrub_to(page, 0.5)
+    paste(page, BLOCKS_DOC)
     page.click('#play')
-    seen = []
-    for _ in range(3):
+    seen, table_classes = [], None
+    for _ in range(4):
         try:
             page.wait_for_function("document.getElementById('status').textContent.startsWith('Paused at')", timeout=25000)
         except Exception:
             break
         seen.append(page.text_content('#status'))
+        if 'table' in seen[-1]:
+            table_classes = page.evaluate("[document.querySelector('#doc table').getAttribute('class'),"
+                                          " document.querySelector('#doc table').hasAttribute('data-ra-stop')]")
         page.wait_for_timeout(300)
         page.keyboard.press('Space')
         page.wait_for_function("!document.getElementById('status').textContent.startsWith('Paused at')", timeout=5000)
-    check(any('formula' in s for s in seen), 'pauses before the display formula')
-    check(any('code block' in s for s in seen), 'pauses before the code block')
-    check(any('table' in s for s in seen), 'pauses before the table')
+    page.wait_for_function("document.getElementById('status').textContent === 'Finished.'", timeout=20000)
+    order = ['formula' in s and 'table' not in s for s in seen[:1]] + ['table' in s for s in seen[1:2]] + ['code block' in s for s in seen[2:3]]
+    check(len(seen) == 3 and all(order), 'pauses at the formula, then the table, then the code block' + (f': {seen}' if not all(order) or len(seen) != 3 else ''))
+    check(table_classes == [None, True], 'the paused table is marked without adding a class, so its styling is untouched')
+    spoken = ' '.join(body['text'] for _, body in fake.tts_calls)
+    check('After the table.' in spoken and 'The end.' in spoken, 'after each pause it reads on from the text after the block')
+    check('Tablecell' not in spoken and 'a equals b' not in spoken, 'tables and display formulas are skipped, not read (or fetched)')
 
-    page.keyboard.press('Escape')
+    fake.tts_calls.clear()
     page.uncheck('#pauseBlocks')
-    scrub_to(page, 0.5)
     page.click('#play')
-    page.wait_for_timeout(6000)
-    check(not page.text_content('#status').startswith('Paused at'), 'unticked, it reads straight through blocks')
+    page.wait_for_function("document.getElementById('status').textContent === 'Finished.'", timeout=20000)
+    spoken = ' '.join(body['text'] for _, body in fake.tts_calls)
+    check('Tablecell' in spoken and 'a equals b' in spoken, 'unticked, tables and formulas are read straight through')
     check(not errors, 'no script errors' + (f': {errors}' if errors else ''))
     page.close()
 
