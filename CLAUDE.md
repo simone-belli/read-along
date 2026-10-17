@@ -6,22 +6,25 @@ Live site: https://simone-belli.github.io/read-along/ (GitHub Pages, deployed fr
 
 ## Files
 
-- `index.html`: the entire app. One self-contained page, no build step, no server.
+- `index.html`: the app page: toolbar, Markdown rendering, loading files. No build step, no server.
+- `engine.js`: the reading engine (model, highlighting, both voice engines, transport, settings). Plain script, exposes `ReadAlong.create()`. Also used, as a pinned copy, by the Notes site (`simone-belli/notes`, `docs/assets/read-along/engine.js`).
 - `tests/e2e.py`: end-to-end browser tests (Playwright, Python) with a simulated ElevenLabs API.
+- `tests/embed.html`: fixture page that drives `engine.js` the way an embedding site does (Material/KaTeX-style markup).
 - `tests/package.json`: local copies of the CDN libraries, so the tests can run offline.
 - `README.md`, `LICENSE`, `logo.svg`: user-facing docs, MIT license, logo. `index.html` inlines the logo once as `<symbol id="logo-mark">` and reuses it with `<use>` (toolbar, welcome page, footer, drop overlay); the favicon is a separate data URI copy.
 
 ## Ground rules
 
 - **Pushing to `main` deploys the live site** within a minute or two. Make small or obviously safe changes on `main`. Put anything risky on a branch and open a pull request so the owner can try it first.
-- **Keep it a single self-contained `index.html`.** No bundler, no framework, no backend. External libraries come only from CDNs, pinned to exact versions.
+- **Keep it two plain files: `index.html` and `engine.js`.** No bundler, no framework, no backend. External libraries come only from CDNs, pinned to exact versions.
+- **`engine.js` is a public interface.** Notes copies it; keep `ReadAlong.create()` options backwards compatible, and after changing it tell the owner the Notes copy needs refreshing.
 - **Never put an API key in the repo.** The user's ElevenLabs key lives in their browser's localStorage and is entered through the settings panel.
 - **Run `python3 tests/e2e.py` before every push** and keep it passing. Add checks for new behaviour.
 - Keep the look close to Cursor/VS Code's dark Markdown preview, which the owner reads in every day.
 
-## How index.html is organised
+## How the code is organised
 
-The script is one IIFE split into numbered sections (search for `// N.`):
+The sections are numbered (search for `// N.`). `index.html` holds 1, 11 and 13; `engine.js` holds the rest inside `ReadAlong.create(options)`. The options (`blockSelector`, `skipSelector`, `mathSelector`, `displayMathSelector`, `tex`, `viewport`, `reveal`, `keys`) are what let another site use the engine on its own markup; the `ui` option maps control names to elements.
 
 1. **Rendering.** markdown-it plus highlight.js. Maths (`$…$`, `$$…$$`, `\(…\)`, `\[…\]`) is pulled out before Markdown parsing, so `_` and `*` survive. It is restored as `<span class="math" data-tex>` and typeset by MathJax.
 2. **Speakable maths.** `speakMath()` turns TeX into rough spoken words ("x squared over 2 sigma squared"). Extend `TEX_WORDS` for new symbols.
@@ -46,7 +49,7 @@ The script is one IIFE split into numbered sections (search for `// N.`):
     - localStorage keys are prefixed `readalong.`: `elKey`, `elVoice`, `elModel`, `engine`, `voice`, `rate`, `follow`, `pauseBlocks`.
 11. **Loading.** Open button, drag and drop, or paste.
 12. **Interaction.** Space plays or pauses, ←/→ move by sentence, Esc stops, and double-clicking a sentence starts reading there.
-13. **Start-up.**
+13. **Start-up.** The engine restores settings; `index.html` loads the sample document.
 
 ## ElevenLabs notes
 

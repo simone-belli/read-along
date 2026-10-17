@@ -41,11 +41,11 @@ Read Markdown while hearing it read aloud. The text is shown the way Cursor's Ma
 
 ## Running it locally
 
-It's a single file with no build step: open `index.html` in Chrome, Edge or Safari. It loads markdown-it, highlight.js and MathJax from public CDNs, so it needs an internet connection.
+There's no build step: open `index.html` in Chrome, Edge or Safari (it loads `engine.js` from the same folder). It loads markdown-it, highlight.js and MathJax from public CDNs, so it needs an internet connection.
 
 ## Development
 
-Everything lives in `index.html`. Browser tests with a simulated ElevenLabs API are in `tests/`:
+The page is `index.html`; the reading engine is `engine.js`, which other sites can reuse through `ReadAlong.create()`. Browser tests with a simulated ElevenLabs API are in `tests/`:
 
 ```
 pip install playwright && playwright install chromium

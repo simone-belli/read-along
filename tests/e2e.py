@@ -240,10 +240,39 @@ def test_pause_at_blocks(browser):
     page.close()
 
 
+def test_embedding(browser):
+    print('\n# engine.js embedded in another page')
+    page = browser.new_page(viewport={'width': 1100, 'height': 760})
+    errors = []
+    page.on('pageerror', lambda e: errors.append(str(e)))
+    fake = FakeElevenLabs()
+    page.route('https://api.elevenlabs.io/**', fake)
+    page.add_init_script("try{localStorage.setItem('readalong.elKey','sk_test')}catch(e){}")
+    page.goto((ROOT / 'tests' / 'embed.html').as_uri())
+    page.wait_for_function("document.getElementById('status').textContent.includes('sentences')", timeout=10000)
+
+    page.keyboard.press('Space')
+    page.dblclick('#root p')
+    page.wait_for_timeout(300)
+    check(not page.evaluate('ra.isPlaying()'), 'keyboard and double-click shortcuts stay off while the host says so')
+    page.evaluate('window.keysOn = true')
+    page.keyboard.press('Space')
+    page.wait_for_function("document.getElementById('status').textContent === 'Finished.'", timeout=20000)
+    spoken = ' '.join(body['text'] for _, body in fake.tts_calls)
+    check('x squared' in spoken, 'KaTeX formulas are spoken from their TeX annotation')
+    check('a equals b' in spoken, 'display formulas in their own block are read')
+    check('¶' not in spoken and 'never read' not in spoken, 'header links and code are skipped')
+    check('Spoiler title' in spoken and 'Hidden spoiler' not in spoken, 'a closed details block reads only its summary')
+    check(page.evaluate('revealed') == ['Text from a collapsed section.'] and 'collapsed section' in spoken,
+          'the host reveals a hidden block before it is read')
+    check(not errors, 'no script errors' + (f': {errors}' if errors else ''))
+    page.close()
+
+
 def main():
     with sync_playwright() as p:
         browser = p.chromium.launch(args=['--autoplay-policy=no-user-gesture-required'])
-        for test in (test_rendering_and_playback, test_key_handling, test_pause_at_blocks):
+        for test in (test_rendering_and_playback, test_key_handling, test_pause_at_blocks, test_embedding):
             try:
                 test(browser)
             except Exception as e:      # a crashed test counts as a failure, the rest still run
