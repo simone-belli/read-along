@@ -83,7 +83,7 @@ def serve_local_libs(page):
         page.route('https://cdn.jsdelivr.net/npm/markdown-it@14.1.0/**',
                    from_dir(LIBS / 'markdown-it', '/npm/markdown-it@14.1.0/'))
     if (LIBS / 'mathjax').is_dir():
-        page.route('https://cdn.jsdelivr.net/npm/mathjax@3/**', from_dir(LIBS / 'mathjax', '/npm/mathjax@3/'))
+        page.route('https://cdn.jsdelivr.net/npm/mathjax@3.2.2/**', from_dir(LIBS / 'mathjax', '/npm/mathjax@3.2.2/'))
 
 
 results = []
@@ -160,6 +160,10 @@ def test_rendering_and_playback(browser):
     scrub_to(page, 0.62)
     page.wait_for_timeout(1500)
     check(page.evaluate("document.querySelectorAll('.math.read').length") >= 1, 'formulas before the cursor are marked as read')
+    check(page.evaluate("""(() => { const m = document.querySelector('.math.read mjx-container') || document.querySelector('.math.read');
+        return getComputedStyle(m).color === getComputedStyle(document.documentElement).getPropertyValue('--heading').trim()
+          .replace(/^#(..)(..)(..)$/, (_, r, g, b) => `rgb(${parseInt(r, 16)}, ${parseInt(g, 16)}, ${parseInt(b, 16)})`)
+          && getComputedStyle(m.closest('.math')).opacity === '1'; })()"""), 'read formulas are drawn bright, not session grey')
 
     calls = len(fake.tts_calls)
     page.keyboard.press('Escape')

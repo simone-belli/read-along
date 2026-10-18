@@ -24,7 +24,7 @@
     startup: { typeset: false }
   };
 </script>
-<script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-chtml.js"></script>
 
 <style>
   :root {
@@ -116,6 +116,10 @@
   #doc hr { border: 0; border-top: 1px solid var(--border); margin: 2em 0; }
   #doc img { max-width: 100%; }
   #doc .math.display { display: block; overflow-x: auto; overflow-y: hidden; margin: 0.6em 0; }
+  /* MathJax glyphs are thinner than body text, so give them the brighter heading colour.
+     Set on .math itself so the session's grey (#doc.active) never reaches them: unread
+     formulas are dimmed with opacity alone, read ones are back to full brightness. */
+  #doc .math { color: var(--heading); }
 
   /* ---------- read-along state ----------
      While a session is active, unread text is grey; what has been read turns bright,
