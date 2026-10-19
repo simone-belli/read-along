@@ -266,7 +266,8 @@
       setBoundary(read, 'end', b, progress, true);
 
       if (hl) {
-        hl.read.clear(); hl.read.add(read);
+        hl.read.clear();
+        for (const r of skipPre(read)) hl.read.add(r);
         hl.sentence.clear(); hl.sentence.add(sentence);
         hl.word.clear(); if (wordRange) hl.word.add(wordRange);
       }
@@ -281,6 +282,22 @@
         if (!HAS_HL) currentBlockEl.setAttribute('data-ra-current', '');
       }
       follow(wordRange || sentence);
+    }
+
+    // The "read" highlight recolours text, which would wipe out the syntax colours of a code
+    // block it covers, so it is split into pieces that go around every code block.
+    function skipPre(range) {
+      const pieces = [];
+      let rest = range.cloneRange();
+      for (const pe of preEls) {
+        if (!rest.intersectsNode(pe)) continue;
+        const piece = rest.cloneRange();
+        piece.setEndBefore(pe);
+        pieces.push(piece);
+        rest.setStartAfter(pe);
+      }
+      pieces.push(rest);
+      return pieces;
     }
 
     function clearPaint() {

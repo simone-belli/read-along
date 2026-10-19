@@ -165,6 +165,13 @@ def test_rendering_and_playback(browser):
           .replace(/^#(..)(..)(..)$/, (_, r, g, b) => `rgb(${parseInt(r, 16)}, ${parseInt(g, 16)}, ${parseInt(b, 16)})`)
           && getComputedStyle(m.closest('.math')).opacity === '1'; })()"""), 'read formulas are drawn bright, not session grey')
 
+    scrub_to(page, 0.95)
+    page.wait_for_timeout(1500)
+    check(page.evaluate("""(() => { const pres = [...document.querySelectorAll('pre.read')];
+        const ranges = [...CSS.highlights.get('tts-read')];
+        return pres.length > 0 && !ranges.some((r) => pres.some((p) => r.intersectsNode(p.querySelector('code').firstChild))); })()"""),
+        'read code blocks keep their syntax colours (the read highlight goes around them)')
+
     calls = len(fake.tts_calls)
     page.keyboard.press('Escape')
     page.click('#play')
