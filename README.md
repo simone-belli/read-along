@@ -16,7 +16,7 @@ Read Markdown while hearing it read aloud. The text is shown the way Cursor's Ma
 - **Full playback control.** Play/pause, previous/next sentence, a scrubber with elapsed and total time, speed from 0.8× to 2×, and auto-scroll that follows the reading.
 - **Pause at blocks.** Optionally stops before each code block, display formula or table so you can read it, then carries on when you press Play.
 - **Easy loading.** Open a `.md` file, drag one onto the page, or paste Markdown anywhere.
-- **Picks up where you left off.** The page reopens the last document you loaded. In Chrome and Edge the ↻ button rereads the file from disk and tells you whether it changed; choose "Allow on every visit" and the page loads the latest version by itself. Click the logo to see the welcome page again.
+- **Picks up where you left off.** The page reopens the last document you loaded. In Chrome and Edge the ↻ button rereads the file from disk and tells you whether it changed; choose "Allow on every visit" and the page loads the latest version by itself. Otherwise, after a reload the page offers "Load the current version", and pressing Play reads the current version too. Click the logo to see the welcome page again.
 
 ## Keyboard
 

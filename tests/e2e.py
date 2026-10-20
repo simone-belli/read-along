@@ -333,6 +333,13 @@ def serve_repo():
 FAKE_PICKER = """window.showOpenFilePicker = async () => [
     await (await navigator.storage.getDirectory()).getFileHandle('notes.md', { create: true })];"""
 
+# Chrome forgets a file's permission when the page reloads (unless "Allow on every visit"),
+# and asks again only after a click. Simulated on top of the always-granted private files.
+FORGET_PERMISSION = """(() => { let perm = 'prompt'; const P = FileSystemHandle.prototype;
+    P.queryPermission = async function () { return perm; };
+    P.requestPermission = async function () { if (!navigator.userActivation.isActive) throw new DOMException('no click', 'SecurityError');
+        return (perm = 'granted'); }; })();"""
+
 def write_disk_file(page, text):
     page.evaluate("""async (t) => { const d = await navigator.storage.getDirectory();
         const w = await (await d.getFileHandle('notes.md', { create: true })).createWritable();
@@ -386,6 +393,43 @@ def test_last_document(browser):
         check(page.is_hidden('#reload'), 'pasted text has no reload button')
         page.reload(); wait_ready(page)
         check(page.text_content('#filename') == 'Pasted text' and 'Some pasted words.' in doc_text(page), 'pasted text is remembered too')
+        check(not errors, 'no script errors' + (f': {errors}' if errors else ''))
+        page.close()
+
+        # Chrome without "Allow on every visit": the page needs a click before it can reread the file.
+        page, fake, errors = open_page(browser, key='sk_test', url=url, init=FAKE_PICKER + FORGET_PERMISSION)
+        write_disk_file(page, '# Notes\n\nFirst version.')
+        page.click('label.btn')
+        page.wait_for_function("document.getElementById('filename').textContent === 'notes.md'", timeout=10000)
+        wait_ready(page)
+        write_disk_file(page, '# Notes\n\nSecond version.')
+        page.reload(); wait_ready(page)
+        page.wait_for_selector('#stale:not([hidden])', timeout=5000)
+        check('saved' in page.text_content('#staleText') and 'First version.' in doc_text(page),
+              'when the browser wants a click first, the page says the copy shown may be old')
+        page.click('#loadLatest')
+        page.wait_for_function("document.getElementById('doc').textContent.includes('Second version.')", timeout=10000)
+        check(page.is_hidden('#stale') and page.text_content('#status').startswith('Updated'), '"Load the current version" reads the file from disk')
+
+        write_disk_file(page, '# Notes\n\nThird version.')
+        page.reload(); wait_ready(page)
+        page.wait_for_selector('#stale:not([hidden])', timeout=5000)
+        page.keyboard.press('Space')
+        page.wait_for_function("document.getElementById('doc').textContent.includes('Third version.')", timeout=10000)
+        page.wait_for_timeout(800)
+        spoken = ' '.join(body['text'] for _, body in fake.tts_calls)
+        check('Third version.' in spoken and 'Second version.' not in spoken, 'Space checks the file first, then reads the current version')
+
+        page.keyboard.press('Escape')
+        write_disk_file(page, '# Notes\n\nFourth version.')
+        page.reload(); wait_ready(page)
+        page.wait_for_selector('#stale:not([hidden])', timeout=5000)
+        fake.tts_calls.clear()
+        page.click('#play')
+        page.wait_for_function("document.getElementById('doc').textContent.includes('Fourth version.')", timeout=10000)
+        page.wait_for_timeout(800)
+        spoken = ' '.join(body['text'] for _, body in fake.tts_calls)
+        check('Fourth version.' in spoken and 'Third version.' not in spoken, 'the Play button does the same')
         check(not errors, 'no script errors' + (f': {errors}' if errors else ''))
         page.close()
 

@@ -90,6 +90,12 @@
   #scrub { flex: 1; min-width: 120px; accent-color: var(--accent); cursor: pointer; }
   .time { font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; min-width: 90px; text-align: right; }
   .status { font-size: 12px; color: var(--dim); min-height: 1.2em; }
+  .notice {
+    font-size: 12px; color: var(--text); background: rgba(55, 148, 255, 0.12);
+    border: 1px solid rgba(55, 148, 255, 0.35); border-radius: 6px; padding: 4px 4px 4px 10px;
+  }
+  .notice button { padding: 3px 10px; font-size: 12px; background: var(--accent); border-color: var(--accent); color: #fff; }
+  .notice button:hover:not(:disabled) { background: #2a7fe0; }
 
   /* ---------- document (approximates Cursor / VS Code Markdown preview) ---------- */
   main { max-width: 880px; margin: 0 auto; padding: 28px 20px 45vh; }
@@ -233,6 +239,9 @@
       <input type="range" id="scrub" min="0" max="0" value="0" step="1" aria-label="Position">
       <span id="time" class="time">0:00 / 0:00</span>
       <label class="field" title="Pause before code blocks, display formulas and tables"><input type="checkbox" id="pauseBlocks"> Pause at blocks</label>
+    </div>
+    <div class="row notice" id="stale" hidden>
+      <span id="staleText"></span><span class="spacer"></span><button id="loadLatest">Load the current version</button>
     </div>
     <div id="status" class="status"></div>
   </div>
@@ -393,6 +402,7 @@ def mean(xs):
   const canPick = typeof window.showOpenFilePicker === 'function';
   let current = null;        // { name, text, source: 'file' | 'paste', loadedAt, handle }
   let reloadNext = false;    // the next file opened through the picker answers ↻
+  let needsCheck = false;    // the copy shown may be old: check the file on the next click
 
   const fileStore = (() => {   // own database: engine.js owns 'read-along' and its version
     let dbp = null;
@@ -430,6 +440,7 @@ def mean(xs):
   setInterval(showLoaded, 60000);
 
   function setCurrent(c) {
+    showStale(false);   // whatever is shown now was just read, or is another document
     current = c;
     showLoaded();
     if (!c) return;
@@ -493,6 +504,7 @@ def mean(xs):
 
   $('reload').addEventListener('click', async () => {
     if (!current || current.source !== 'file') return;
+    showStale(false);
     const handle = current.handle;
     if (!handle) { pickFile(true); return; }
     let text;
@@ -539,6 +551,8 @@ def mean(xs):
   }
 
   // If the browser still lets us read the file (Chrome's "Allow on every visit"), show its current version.
+  // If it wants a click first, say that the copy shown may be old, and check the file on the next
+  // click: the notice's button, or Play / Space, which then read the current version.
   async function refreshFromDisk() {
     const handle = await fileStore.get();
     if (!handle || !current || current.source !== 'file' || handle.name !== current.name) return;
@@ -546,8 +560,44 @@ def mean(xs):
     try {
       const text = await fileText(handle, false);
       if (text != null) await showFile(text, handle.name, handle, { reload: true, quiet: true });
+      else showStale(true);
     } catch { /* moved or deleted: keep the saved copy */ }
   }
+
+  function showStale(on) {
+    needsCheck = on;
+    $('stale').hidden = !on;
+    if (on) $('staleText').textContent = `This is the copy of ${current.name} saved ${ago(current.loadedAt)}. The file may have changed since.`;
+  }
+
+  async function checkFile() {
+    showStale(false);
+    const name = current.name;
+    try {
+      const text = await fileText(current.handle, true);
+      if (text == null) { ra.setStatus(`Showing the saved copy: the browser did not allow reading ${name}. Click ↻ to try again.`); return; }
+      await showFile(text, name, current.handle, { reload: true });
+    } catch {
+      ra.setStatus(`Could not reread ${name}: it may have been moved, renamed or deleted. Showing the saved copy.`);
+    }
+  }
+  $('loadLatest').addEventListener('click', checkFile);
+
+  // Play and Space check the file first (they count as the click the browser needs), then play.
+  const checkThenPlay = (e) => {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    checkFile().then(() => ra.play());
+  };
+  window.addEventListener('click', (e) => {
+    if (needsCheck && e.target.closest && e.target.closest('#play')) checkThenPlay(e);
+  }, true);
+  window.addEventListener('keydown', (e) => {
+    const t = e.target;
+    if (!needsCheck || e.code !== 'Space' || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (t.closest && t.closest('input, select, textarea, button, label')) return;
+    checkThenPlay(e);
+  }, true);
 
   if (!window.markdownit) {
     ra.setStatus('Could not load the Markdown renderer. Check your internet connection and reload.');
