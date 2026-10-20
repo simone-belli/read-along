@@ -11,7 +11,7 @@ Setup (once):
 Run from the repo root:
     python3 tests/e2e.py             # exits 0 when every check passes
 """
-import base64, io, json, pathlib, sys, wave
+import base64, functools, http.server, io, json, pathlib, sys, threading, wave
 
 from playwright.sync_api import sync_playwright
 
@@ -92,7 +92,7 @@ def check(cond, label):
     print(('PASS ' if cond else 'FAIL ') + label)
 
 
-def open_page(browser, key=None):
+def open_page(browser, key=None, url=PAGE, init=None):
     """New page with the fake API; key=None starts with empty storage."""
     page = browser.new_page(viewport={'width': 1100, 'height': 760})
     errors = []
@@ -102,7 +102,9 @@ def open_page(browser, key=None):
     page.route('https://api.elevenlabs.io/**', fake)
     if key:
         page.add_init_script(f"try{{localStorage.setItem('readalong.elKey','{key}')}}catch(e){{}}")
-    page.goto(PAGE)
+    if init:
+        page.add_init_script(init)
+    page.goto(url)
     page.wait_for_function("document.getElementById('status').textContent.includes('sentences')", timeout=20000)
     return page, fake, errors
 
@@ -318,10 +320,101 @@ def test_embedding(browser):
     page.close()
 
 
+def serve_repo():
+    """Serves the repo on localhost: file handles need a secure origin, which file:// is not."""
+    quiet = type('Quiet', (http.server.SimpleHTTPRequestHandler,), {'log_message': lambda *a: None})
+    srv = http.server.ThreadingHTTPServer(('127.0.0.1', 0), functools.partial(quiet, directory=str(ROOT)))
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv
+
+
+# The Open button's file picker, simulated with a file in the origin-private file system:
+# its handle is real, so it survives a page reload in IndexedDB like a picked file's does.
+FAKE_PICKER = """window.showOpenFilePicker = async () => [
+    await (await navigator.storage.getDirectory()).getFileHandle('notes.md', { create: true })];"""
+
+def write_disk_file(page, text):
+    page.evaluate("""async (t) => { const d = await navigator.storage.getDirectory();
+        const w = await (await d.getFileHandle('notes.md', { create: true })).createWritable();
+        await w.write(t); await w.close(); }""", text)
+
+def wait_ready(page):
+    page.wait_for_function("document.getElementById('status').textContent.includes('sentences')", timeout=20000)
+
+def doc_text(page):
+    return page.text_content('#doc')
+
+
+def test_last_document(browser):
+    print('\n# Remembering the last document')
+    srv = serve_repo()
+    url = f'http://127.0.0.1:{srv.server_port}/index.html'
+    try:
+        page, fake, errors = open_page(browser, url=url, init=FAKE_PICKER)
+        check(page.text_content('#filename') == 'Sample' and page.is_hidden('#reload'), 'a first visit shows the sample, with no reload button')
+        write_disk_file(page, '# Notes\n\nFirst version.')
+        page.click('label.btn')
+        page.wait_for_function("document.getElementById('filename').textContent === 'notes.md'", timeout=10000)
+        wait_ready(page)
+        check(page.is_visible('#reload') and page.text_content('#loaded') == 'loaded just now', 'an opened file gets a reload button and its load time')
+
+        page.reload(); wait_ready(page)
+        check(page.text_content('#filename') == 'notes.md' and 'First version.' in doc_text(page) and page.is_hidden('#hero'),
+              'reopening the page shows the last file, not the sample')
+
+        page.click('#reload')
+        page.wait_for_function("document.getElementById('status').textContent.startsWith('No changes')", timeout=5000)
+        check(True, 'reload reports when the file is unchanged')
+
+        write_disk_file(page, '# Notes\n\nSecond version.')
+        page.click('#reload')
+        page.wait_for_function("document.getElementById('status').textContent.startsWith('Updated')", timeout=10000)
+        check('Second version.' in doc_text(page) and 'First version.' not in doc_text(page), 'reload shows the changed file from disk')
+
+        write_disk_file(page, '# Notes\n\nThird version.')
+        page.reload(); wait_ready(page)
+        page.wait_for_function("document.getElementById('doc').textContent.includes('Third version.')", timeout=10000)
+        check(True, 'with permission kept, reopening the page picks up changes on disk')
+
+        page.click('#home'); wait_ready(page)
+        check(page.text_content('#filename') == 'Sample' and page.is_visible('#hero') and page.is_hidden('#reload'),
+              'the logo brings back the welcome page')
+        page.reload(); wait_ready(page)
+        check(page.text_content('#filename') == 'notes.md', 'viewing the sample does not forget the last file')
+
+        paste(page, '# Pasted\n\nSome pasted words.')
+        check(page.is_hidden('#reload'), 'pasted text has no reload button')
+        page.reload(); wait_ready(page)
+        check(page.text_content('#filename') == 'Pasted text' and 'Some pasted words.' in doc_text(page), 'pasted text is remembered too')
+        check(not errors, 'no script errors' + (f': {errors}' if errors else ''))
+        page.close()
+
+        # Browsers without file handles (Safari, Firefox): the saved copy, and ↻ goes through the picker.
+        page, fake, errors = open_page(browser, url=url, init='delete window.showOpenFilePicker;')
+        page.set_input_files('#file', files=[{'name': 'plain.md', 'mimeType': 'text/markdown', 'buffer': b'# Plain\n\nOld text.'}])
+        page.wait_for_function("document.getElementById('filename').textContent === 'plain.md'", timeout=10000)
+        page.reload(); wait_ready(page)
+        check(page.text_content('#filename') == 'plain.md' and 'Old text.' in doc_text(page), 'without file handles, the saved copy is reopened')
+        with page.expect_file_chooser() as fc:
+            page.click('#reload')
+        fc.value.set_files(files=[{'name': 'plain.md', 'mimeType': 'text/markdown', 'buffer': b'# Plain\n\nOld text.'}])
+        page.wait_for_function("document.getElementById('status').textContent.startsWith('No changes')", timeout=5000)
+        check(True, 'without file handles, reload asks for the file and compares it')
+        with page.expect_file_chooser() as fc:
+            page.click('#reload')
+        fc.value.set_files(files=[{'name': 'plain.md', 'mimeType': 'text/markdown', 'buffer': b'# Plain\n\nNew text.'}])
+        page.wait_for_function("document.getElementById('status').textContent.startsWith('Updated')", timeout=10000)
+        check('New text.' in doc_text(page), '... and shows the new version when it changed')
+        check(not errors, 'no script errors' + (f': {errors}' if errors else ''))
+        page.close()
+    finally:
+        srv.shutdown()
+
+
 def main():
     with sync_playwright() as p:
         browser = p.chromium.launch(args=['--autoplay-policy=no-user-gesture-required'])
-        for test in (test_rendering_and_playback, test_key_handling, test_pause_at_blocks, test_embedding):
+        for test in (test_rendering_and_playback, test_key_handling, test_pause_at_blocks, test_last_document, test_embedding):
             try:
                 test(browser)
             except Exception as e:      # a crashed test counts as a failure, the rest still run

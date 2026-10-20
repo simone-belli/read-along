@@ -46,10 +46,10 @@ The sections are numbered (search for `// N.`). `index.html` holds 1, 11 and 13;
 9. **Time display and scrubber.** Positions are measured in characters and converted to time with a calibrated characters-per-second rate.
 10. **Settings.**
     - Engine, voice, model and speed controls, plus the API key flow. The key is checked with ElevenLabs before it is saved, then hidden.
-    - localStorage keys are prefixed `readalong.`: `elKey`, `elVoice`, `elModel`, `engine`, `voice`, `rate`, `follow`, `pauseBlocks`.
-11. **Loading.** Open button, drag and drop, or paste.
+    - localStorage keys are prefixed `readalong.`: `elKey`, `elVoice`, `elModel`, `engine`, `voice`, `rate`, `follow`, `pauseBlocks`, and `lastDoc` (set by `index.html`).
+11. **Loading.** Open button, drag and drop, or paste. The last document is remembered (`readalong.lastDoc` in localStorage). In Chrome and Edge the Open button uses `showOpenFilePicker` and drops use `getAsFileHandle`, and the file handle is kept in a separate IndexedDB database, `read-along-files`, so ↻ can reread the file and say whether it changed. Elsewhere ↻ reopens the file picker. The logo shows the sample again.
 12. **Interaction.** Space plays or pauses, ←/→ move by sentence, Esc stops, and double-clicking a sentence starts reading there.
-13. **Start-up.** The engine restores settings; `index.html` loads the sample document.
+13. **Start-up.** The engine restores settings; `index.html` loads the last document (rereading it from disk when the browser still grants access), or the sample on a first visit.
 
 ## ElevenLabs notes
 
@@ -74,6 +74,7 @@ The fake ElevenLabs returns silent WAV audio at 30 characters per second, with e
 - caching
 - key handling
 - pause at blocks
+- remembering and reloading the last document (served over localhost, because file handles need a secure origin)
 
 ## Known gaps and ideas
 
