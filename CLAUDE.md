@@ -48,6 +48,7 @@ The sections are numbered (search for `// N.`). `index.html` holds 1, 11 and 13;
     - Engine, voice, model and speed controls, plus the API key flow. The key is checked with ElevenLabs before it is saved, then hidden.
     - localStorage keys are prefixed `readalong.`: `elKey`, `elVoice`, `elModel`, `engine`, `voice`, `rate`, `follow`, `pauseBlocks`, and `lastDoc` (set by `index.html`).
 11. **Loading.** Open button, drag and drop, or paste. The last document is remembered (`readalong.lastDoc` in localStorage). In Chrome and Edge the Open button uses `showOpenFilePicker` and drops use `getAsFileHandle`, and the file handle is kept in a separate IndexedDB database, `read-along-files`, so ↻ can reread the file and say whether it changed. After a page reload Chrome wants a click before the file can be read again (unless the user chose "Allow on every visit"), so start-up then shows a notice with "Load the current version", and Play or Space check the file before reading. Elsewhere ↻ reopens the file picker. The logo shows the sample again.
+    - **Links.** A click on a relative link to a `.md`/`.markdown`/`.mdown`/`.txt` file opens that file. The first one asks for the folder that holds the current file: in Chrome and Edge `showDirectoryPicker`, with the handle kept under `'folder'` in `read-along-files` and the file located in it with `resolve()`; elsewhere a `webkitdirectory` input, with the file found by name and text, kept until the page reloads. Back and Forward use `history.pushState`, and the documents shown live in `visited` until the page reloads. Links to websites open in a new tab. Other relative links (images, PDFs) only show a message.
 12. **Interaction.** Space plays or pauses, ←/→ move by sentence, Esc stops, and double-clicking a sentence starts reading there.
 12b. **Status line.** `index.html` passes `summary: false`, so the status line shows only messages (errors, "Paused at…", "Updated…") as a label under the toolbar and is hidden when empty. Notes keeps the default (`summary: true`): sentence count and ElevenLabs cost.
 13. **Start-up.** The engine restores settings; `index.html` loads the last document (rereading it from disk when the browser still grants access), or the sample on a first visit.
@@ -77,9 +78,9 @@ The fake ElevenLabs returns silent WAV audio at 30 characters per second, with e
 - pause at blocks
 - Follow (scrolls along when ticked, stays put when not)
 - remembering and reloading the last document (served over localhost, because file handles need a secure origin)
+- following links to other Markdown files, with and without file handles, plus Back and Forward
 
 ## Known gaps and ideas
 
-- MathJax loads as `mathjax@3`, not an exact version. Pin it (e.g. `3.2.2`) the next time the page changes.
-- Relative image paths in a loaded Markdown file can't resolve, because the page can't see the file's folder.
+- Relative image paths in a loaded Markdown file still don't resolve. The folder handle that links use could now serve them as blob URLs.
 - Ideas raised but not built: opening the current file straight from Cursor, PDF support.

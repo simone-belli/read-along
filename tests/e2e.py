@@ -11,7 +11,7 @@ Setup (once):
 Run from the repo root:
     python3 tests/e2e.py             # exits 0 when every check passes
 """
-import base64, functools, http.server, io, json, pathlib, sys, threading, wave
+import base64, functools, http.server, io, json, pathlib, sys, tempfile, threading, wave
 
 from playwright.sync_api import sync_playwright
 
@@ -493,10 +493,90 @@ def test_last_document(browser):
         srv.shutdown()
 
 
+# Two linked files in the private file system, and a folder picker that returns its root.
+LINKED = {'notes.md': '# Notes\n\nSee [the other file](docs/other%20file.md#part) and [a site](https://example.com).',
+          'docs/other file.md': '# Other\n\nBack to [the notes](../notes.md). A [missing file](missing.md).'}
+FAKE_FOLDER = """window.folderPicks = 0;
+    window.showDirectoryPicker = async () => { window.folderPicks++; return navigator.storage.getDirectory(); };"""
+
+def write_linked(page):
+    page.evaluate("""async (files) => { const root = await navigator.storage.getDirectory();
+        for (const [path, text] of Object.entries(files)) {
+            const parts = path.split('/'); let d = root;
+            for (const p of parts.slice(0, -1)) d = await d.getDirectoryHandle(p, { create: true });
+            const w = await (await d.getFileHandle(parts.at(-1), { create: true })).createWritable();
+            await w.write(text); await w.close(); } }""", LINKED)
+
+def wait_file(page, name):
+    page.wait_for_function(f"document.getElementById('filename').textContent === {json.dumps(name)}", timeout=10000)
+    wait_ready(page)
+
+def wait_status(page, start):
+    page.wait_for_function(f"document.getElementById('status').textContent.startsWith({json.dumps(start)})", timeout=5000)
+
+
+def test_links(browser):
+    print('\n# Following links to other Markdown files')
+    srv = serve_repo()
+    url = f'http://127.0.0.1:{srv.server_port}/index.html'
+    try:
+        page, fake, errors = open_page(browser, url=url, init=FAKE_PICKER + FAKE_FOLDER)
+        write_linked(page)
+        page.click('label.btn'); wait_file(page, 'notes.md')
+        page.click('#doc a >> text=the other file'); wait_file(page, 'other file.md')
+        check('Back to the notes' in doc_text(page) and page.evaluate('folderPicks') == 1,
+              'a link to another Markdown file opens it, after asking once for the folder')
+        page.click('#doc a >> text=the notes'); wait_file(page, 'notes.md')
+        check(page.evaluate('folderPicks') == 1, 'a link back up the folder opens without asking again')
+        page.go_back(); wait_file(page, 'other file.md')
+        check(True, 'Back returns to the previous file')
+        page.go_forward(); wait_file(page, 'notes.md')
+        check(True, 'Forward goes on to the next one')
+
+        page.click('#doc a >> text=the other file'); wait_file(page, 'other file.md')
+        page.click('#doc a >> text=missing file'); wait_status(page, 'Could not find missing.md')
+        check(page.text_content('#filename') == 'other file.md', 'a link to a missing file says so and stays on the page')
+
+        page.reload(); wait_ready(page)
+        page.click('#doc a >> text=the notes'); wait_file(page, 'notes.md')
+        check(page.evaluate('folderPicks') == 0, 'after a reload the folder is remembered')
+        page.context.route('https://example.com/**', lambda route, request: route.fulfill(status=200, body='site'))
+        with page.expect_popup() as popup:
+            page.click('#doc a >> text=a site')
+        popup.value.wait_for_load_state()
+        check(popup.value.url.startswith('https://example.com') and page.text_content('#filename') == 'notes.md',
+              'a link to a website opens in a new tab')
+        popup.value.close()
+        check(not errors, 'no script errors' + (f': {errors}' if errors else ''))
+        page.close()
+
+        # Browsers without file handles (Safari, Firefox): the folder is chosen as a file list.
+        with tempfile.TemporaryDirectory() as tmp:
+            base = pathlib.Path(tmp) / 'notes-folder'
+            for path, text in LINKED.items():
+                (base / path).parent.mkdir(parents=True, exist_ok=True)
+                (base / path).write_text(text)
+            page, fake, errors = open_page(browser, url=url, init='delete window.showOpenFilePicker; delete window.showDirectoryPicker;')
+            page.set_input_files('#file', files=[str(base / 'notes.md')]); wait_file(page, 'notes.md')
+            with page.expect_file_chooser() as fc:
+                page.click('#doc a >> text=the other file')
+            fc.value.set_files(str(base))
+            wait_file(page, 'other file.md')
+            check('Back to the notes' in doc_text(page), 'without file handles, the folder is asked for and the link opens')
+            page.click('#doc a >> text=the notes'); wait_file(page, 'notes.md')
+            check(True, '... and later links open without asking again')
+            page.go_back(); wait_file(page, 'other file.md')
+            check(True, '... and Back works there too')
+            check(not errors, 'no script errors' + (f': {errors}' if errors else ''))
+            page.close()
+    finally:
+        srv.shutdown()
+
+
 def main():
     with sync_playwright() as p:
         browser = p.chromium.launch(args=['--autoplay-policy=no-user-gesture-required'])
-        for test in (test_rendering_and_playback, test_key_handling, test_pause_at_blocks, test_follow, test_last_document, test_embedding):
+        for test in (test_rendering_and_playback, test_key_handling, test_pause_at_blocks, test_follow, test_last_document, test_links, test_embedding):
             try:
                 test(browser)
             except Exception as e:      # a crashed test counts as a failure, the rest still run

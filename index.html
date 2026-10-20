@@ -425,9 +425,9 @@ def mean(xs):
       t.oncomplete = () => res(q.result);
       t.onerror = () => rej(t.error);
     }));
-    return {
-      get: () => run('readonly', (s) => s.get('last')).catch(() => null),
-      set: (h) => run('readwrite', (s) => (h ? s.put(h, 'last') : s.delete('last'))).catch(() => {})
+    return {   // 'last': the file shown; 'folder': the folder its links are looked up in
+      get: (key = 'last') => run('readonly', (s) => s.get(key)).catch(() => null),
+      set: (h, key = 'last') => run('readwrite', (s) => (h ? s.put(h, key) : s.delete(key))).catch(() => {})
     };
   })();
 
@@ -546,6 +546,128 @@ def mean(xs):
       setCurrent({ name: 'Pasted text', text: t, source: 'paste', loadedAt: Date.now() });
       loadMarkdown(t, 'Pasted text');
     }
+  });
+
+  // Links to other Markdown files open them here. The page can't see a file's folder, so the
+  // first such link asks for it: in Chrome and Edge as a folder handle, kept in IndexedDB like
+  // the file's, elsewhere as the folder's file list, for this visit. Back and Forward step through
+  // the files opened this way. Links to websites open in a new tab, so the reader stays here.
+  const MD_FILE = /\.(md|markdown|mdown|txt)$/i;
+  const canPickFolder = typeof window.showDirectoryPicker === 'function';
+  let folder = null;     // { handle } or { name, files: Map('sub/file.md' → File) }
+  const visited = [];    // documents shown this visit, indexed by history.state.ra
+
+  // The path a link points to, as folder names plus the file name, from the chosen folder;
+  // null when it climbs out of that folder.
+  function joinPath(dir, href) {
+    const out = href.startsWith('/') ? [] : [...dir];
+    for (const s of href.split('/')) {
+      if (s === '..') { if (!out.length) return null; out.pop(); }
+      else if (s && s !== '.') out.push(s);
+    }
+    return out.length ? out : null;
+  }
+
+  // Where the current file sits in the folder (its path without the file name), or null.
+  async function placeInFolder() {
+    if (!folder) return null;
+    if (folder.handle) {
+      const p = current.handle ? await folder.handle.resolve(current.handle).catch(() => null) : null;
+      return p && p.slice(0, -1);
+    }
+    for (const [path, f] of folder.files) {   // no handle: the file with this name and text
+      const p = path.split('/');
+      if (p[p.length - 1] === current.name && (await f.text()) === current.text) return p.slice(0, -1);
+    }
+    return null;
+  }
+
+  async function chooseFolder() {
+    if (canPickFolder && current.handle) {
+      const handle = await window.showDirectoryPicker({ id: 'read-along-folder', startIn: current.handle, mode: 'read' });
+      folder = { handle };
+      fileStore.set(handle, 'folder');
+      return;
+    }
+    const input = Object.assign(document.createElement('input'), { type: 'file', webkitdirectory: true });
+    const files = await new Promise((resolve, reject) => {
+      input.addEventListener('change', () => resolve(input.files));
+      input.addEventListener('cancel', () => reject(new DOMException('cancelled', 'AbortError')));
+      input.click();
+    });
+    if (!files.length) throw new DOMException('empty folder', 'AbortError');
+    const map = new Map([...files].map((f) => [f.webkitRelativePath.split('/').slice(1).join('/'), f]));
+    folder = { name: files[0].webkitRelativePath.split('/')[0], files: map };
+  }
+
+  // The linked file as { file, handle }; asks for the folder when it isn't known yet.
+  async function linkedFile(href) {
+    if (!folder && canPickFolder && current.handle) {
+      const handle = await fileStore.get('folder');
+      if (handle) folder = { handle };
+    }
+    if (folder && folder.handle && (await folder.handle.queryPermission({ mode: 'read' })) !== 'granted'
+        && (await folder.handle.requestPermission({ mode: 'read' })) !== 'granted') folder = null;
+    let dir = await placeInFolder();
+    let path = dir && joinPath(dir, href);
+    if (!path) {
+      ra.setStatus(`To follow links, choose the folder that holds ${current.name} and the files it links to.`);
+      await chooseFolder();
+      dir = await placeInFolder();
+      if (!dir) { ra.setStatus(`${current.name} is not in the folder you chose. Choose the folder that holds it, or one above it.`); return null; }
+      path = joinPath(dir, href);
+      if (!path) { ra.setStatus(`${href} is outside the folder you chose. Choose a folder higher up.`); return null; }
+    }
+    if (folder.files) {
+      const file = folder.files.get(path.join('/'));
+      if (!file) throw new DOMException(path.join('/'), 'NotFoundError');
+      return { file, handle: null };
+    }
+    let d = folder.handle;
+    for (const name of path.slice(0, -1)) d = await d.getDirectoryHandle(name);
+    const handle = await d.getFileHandle(path[path.length - 1]);
+    return { file: await handle.getFile(), handle };
+  }
+
+  async function followLink(href) {
+    if (!current || current.source !== 'file') {
+      ra.setStatus('Links to other files work only in a document opened from a file.');
+      return;
+    }
+    let target;
+    try { target = await linkedFile(href); } catch (e) {
+      if (e.name === 'NotFoundError' || e.name === 'TypeMismatchError') ra.setStatus(`Could not find ${href}: it is not in the folder you chose.`);
+      else if (e.name === 'AbortError') ra.setStatus('');
+      else ra.setStatus(`Could not open ${href}: ${e.message}`);
+      return;
+    }
+    if (!target) return;
+    const text = await target.file.text();
+    history.replaceState({ ra: visited.push({ ...current }) - 1 }, '');   // where Back returns to
+    await showFile(text, target.file.name, target.handle);
+    history.pushState({ ra: visited.push({ ...current }) - 1 }, '');
+  }
+
+  doc.addEventListener('click', (e) => {
+    const a = e.target.closest('a[href]');
+    if (!a) return;
+    const href = a.getAttribute('href');
+    if (href.startsWith('#')) return;
+    if (/^([a-z][a-z0-9+.-]*:|\/\/)/i.test(href)) { a.target = '_blank'; a.rel = 'noopener'; return; }
+    e.preventDefault();
+    let path = href.split(/[?#]/)[0];
+    try { path = decodeURIComponent(path); } catch { /* keep it as written */ }
+    if (MD_FILE.test(path)) followLink(path);
+    else ra.setStatus(`${path} is not a Markdown file, so Read Along can't open it.`);
+  });
+
+  // Back and Forward: the file as it now is on disk when the browser still allows it, else the copy.
+  window.addEventListener('popstate', async (e) => {
+    const v = e.state && visited[e.state.ra];
+    if (!v) return;
+    let text = v.text;
+    if (v.handle) { try { text = (await fileText(v.handle, false)) ?? text; } catch { /* moved: keep the copy */ } }
+    showFile(text, v.name, v.handle);
   });
 
   // ======================================================================
