@@ -15,7 +15,7 @@ Live site: https://simone-belli.github.io/read-along/ (GitHub Pages, deployed fr
 
 ## Ground rules
 
-- **Pushing to `main` deploys the live site** within a minute or two. Make small or obviously safe changes on `main`. Put anything risky on a branch and open a pull request so the owner can try it first.
+- **Commit and push straight to `main`, for changes of any size, without asking first.** This is a standing agreement with the owner (October 2026). Open a pull request only when the owner asks for one. Pushing to `main` deploys the live site within a minute or two, so the tests must pass first (see below).
 - **Keep it two plain files: `index.html` and `engine.js`.** No bundler, no framework, no backend. External libraries come only from CDNs, pinned to exact versions.
 - **`engine.js` is a public interface.** Notes copies it; keep `ReadAlong.create()` options backwards compatible, and after changing it tell the owner the Notes copy needs refreshing.
 - **Never put an API key in the repo.** The user's ElevenLabs key lives in their browser's localStorage and is entered through the settings panel.
