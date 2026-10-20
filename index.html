@@ -72,10 +72,14 @@
   }
   .btn:hover, button:hover:not(:disabled) { background: #383838; }
   button:disabled { opacity: 0.4; cursor: default; }
+  a.brand { text-decoration: none; }
   .filename {
     color: var(--dim); font-size: 13px; max-width: 280px;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
+  .loaded { color: var(--dim); font-size: 12px; white-space: nowrap; margin-left: -4px; }
+  #reload { padding: 5px 8px; margin-left: -4px; }
+  #reload svg { width: 14px; height: 14px; fill: currentColor; vertical-align: -2px; }
   .field { font-size: 12px; color: var(--dim); display: flex; align-items: center; gap: 6px; }
   .field select { max-width: 220px; }
   .transport { display: flex; gap: 6px; }
@@ -177,11 +181,13 @@
 <header class="toolbar" id="toolbar">
   <div class="toolbar-inner">
     <div class="row">
-      <span class="brand"><svg class="logo" aria-hidden="true"><use href="#logo-mark"/></svg><span>Read Along</span></span>
+      <a class="brand" id="home" href="#" title="Show the welcome page"><svg class="logo" aria-hidden="true"><use href="#logo-mark"/></svg><span>Read Along</span></a>
       <label class="btn" title="Open a Markdown file">Open…
         <input type="file" id="file" accept=".md,.markdown,.mdown,.txt,text/markdown,text/plain" hidden>
       </label>
       <span id="filename" class="filename"></span>
+      <button id="reload" title="Reload the file from disk" hidden><svg viewBox="0 0 24 24"><path d="M17.65 6.35A7.95 7.95 0 0 0 12 4a8 8 0 1 0 7.75 10h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4z"/></svg></button>
+      <span id="loaded" class="loaded"></span>
       <span class="spacer"></span>
       <label class="field">Speed
         <select id="rate">
@@ -355,28 +361,148 @@ def mean(xs):
   // 11. Loading documents (button, drag & drop, paste)
   // ======================================================================
   let loadGen = 0;
-  async function loadMarkdown(src, name) {
+  async function loadMarkdown(src, name, { keepScroll = false, status = '' } = {}) {
     const myLoad = ++loadGen;
     ra.stop();
     if (window.MathJax && MathJax.typesetClear) MathJax.typesetClear([doc]);
+    const y = window.scrollY;
     doc.innerHTML = renderMarkdown(src);
     $('filename').textContent = name;
     $('hero').hidden = name !== 'Sample';   // big logo only on the welcome page
     document.title = name + ' · Read Along';
-    window.scrollTo(0, 0);
+    window.scrollTo(0, keepScroll ? y : 0);
     ra.setStatus('Rendering…');
 
     const ok = await mathJaxReady();
-    if (myLoad !== loadGen) return;
+    if (myLoad !== loadGen) return false;
     if (ok) { try { await MathJax.typesetPromise([doc]); } catch (e) { console.warn(e); } }
-    if (myLoad !== loadGen) return;
+    if (myLoad !== loadGen) return false;
 
     ra.refresh();
-    ra.setStatus(ra.summary());
+    ra.setStatus(status + ra.summary());
+    return true;
   }
 
-  const readFile = (f) => f.text().then((t) => loadMarkdown(t, f.name));
-  $('file').addEventListener('change', (e) => { const f = e.target.files[0]; if (f) readFile(f); e.target.value = ''; });
+  const showSample = () => { setCurrent(null); return loadMarkdown($('sample').textContent.trim(), 'Sample'); };
+  $('home').addEventListener('click', (e) => { e.preventDefault(); showSample(); });
+
+  // The last document is remembered, so the next visit opens it instead of the sample:
+  // its text in localStorage and, where the browser allows it (Chrome, Edge), a handle to
+  // the file in IndexedDB, so ↻ can reread it from disk and show whether it changed.
+  const LAST_DOC = 'readalong.lastDoc';
+  const canPick = typeof window.showOpenFilePicker === 'function';
+  let current = null;        // { name, text, source: 'file' | 'paste', loadedAt, handle }
+  let reloadNext = false;    // the next file opened through the picker answers ↻
+
+  const fileStore = (() => {   // own database: engine.js owns 'read-along' and its version
+    let dbp = null;
+    const open = () => dbp || (dbp = new Promise((res, rej) => {
+      const r = indexedDB.open('read-along-files', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('handles');
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    }));
+    const run = (mode, fn) => open().then((db) => new Promise((res, rej) => {
+      const t = db.transaction('handles', mode), q = fn(t.objectStore('handles'));
+      t.oncomplete = () => res(q.result);
+      t.onerror = () => rej(t.error);
+    }));
+    return {
+      get: () => run('readonly', (s) => s.get('last')).catch(() => null),
+      set: (h) => run('readwrite', (s) => (h ? s.put(h, 'last') : s.delete('last'))).catch(() => {})
+    };
+  })();
+
+  function ago(t) {
+    const m = Math.round((Date.now() - t) / 60000);
+    if (m < 1) return 'just now';
+    if (m < 60) return m + (m === 1 ? ' minute ago' : ' minutes ago');
+    const h = Math.round(m / 60);
+    if (h < 24) return h + (h === 1 ? ' hour ago' : ' hours ago');
+    const d = Math.round(h / 24);
+    return d === 1 ? 'yesterday' : d + ' days ago';
+  }
+  function showLoaded() {
+    const isFile = current && current.source === 'file';
+    $('reload').hidden = !isFile;
+    $('loaded').textContent = isFile ? 'loaded ' + ago(current.loadedAt) : '';
+  }
+  setInterval(showLoaded, 60000);
+
+  function setCurrent(c) {
+    current = c;
+    showLoaded();
+    if (!c) return;
+    try { localStorage.setItem(LAST_DOC, JSON.stringify({ name: c.name, text: c.text, source: c.source, loadedAt: c.loadedAt })); }
+    catch { try { localStorage.removeItem(LAST_DOC); } catch { /* storage unavailable */ } }
+    fileStore.set(c.handle || null);
+  }
+
+  // Shows a file's text as it now is on disk; for an already open file only when it changed.
+  async function showFile(text, name, handle, { reload = false, quiet = false } = {}) {
+    const same = reload && current && current.source === 'file' && current.name === name;
+    if (same && text === current.text) {
+      setCurrent({ ...current, handle: handle || current.handle, loadedAt: Date.now() });
+      if (!quiet) ra.setStatus('No changes: the file is the same as the version shown.');
+      return;
+    }
+    setCurrent({ name, text, source: 'file', loadedAt: Date.now(), handle });
+    await loadMarkdown(text, name, same ? { keepScroll: true, status: 'Updated: the file changed on disk. ' } : {});
+  }
+
+  const readFile = (f, handle = null, reload = false) => f.text().then((t) => showFile(t, f.name, handle, { reload }));
+  $('file').addEventListener('change', (e) => {
+    const f = e.target.files[0];
+    if (f) readFile(f, null, reloadNext);
+    reloadNext = false;
+    e.target.value = '';
+  });
+  $('file').addEventListener('cancel', () => { reloadNext = false; });
+
+  async function pickFile(reload = false) {
+    if (!canPick) { reloadNext = reload; $('file').click(); return; }
+    let handle;
+    try {
+      const startIn = current && current.handle;
+      [handle] = await window.showOpenFilePicker({
+        id: 'read-along',
+        ...(startIn ? { startIn } : {}),
+        types: [{ description: 'Markdown', accept: { 'text/markdown': ['.md', '.markdown', '.mdown'], 'text/plain': ['.txt'] } }]
+      });
+    } catch (e) {
+      if (e.name !== 'AbortError') { reloadNext = reload; $('file').click(); }   // picker refused: use the plain one
+      return;
+    }
+    readFile(await handle.getFile(), handle, reload);
+  }
+  // In Chrome and Edge the Open button keeps a handle to the file, so ↻ can reread it.
+  $('file').parentElement.addEventListener('click', (e) => {
+    if (!canPick || e.target === $('file')) return;
+    e.preventDefault();
+    pickFile();
+  });
+
+  // Rereads the file from disk with the permission it was opened with; without one,
+  // it asks the browser again (Chrome offers "Allow on every visit"), or opens the picker.
+  async function fileText(handle, ask) {
+    let perm = await handle.queryPermission({ mode: 'read' });
+    if (perm === 'prompt' && ask) perm = await handle.requestPermission({ mode: 'read' });
+    if (perm !== 'granted') return null;
+    return (await handle.getFile()).text();
+  }
+
+  $('reload').addEventListener('click', async () => {
+    if (!current || current.source !== 'file') return;
+    const handle = current.handle;
+    if (!handle) { pickFile(true); return; }
+    let text;
+    try { text = await fileText(handle, true); } catch (e) {
+      ra.setStatus(`Could not reread ${current.name}: it may have been moved, renamed or deleted. Open it again.`);
+      return;
+    }
+    if (text == null) { ra.setStatus(`Reading ${current.name} again needs your permission. Click ↻ and choose Allow.`); return; }
+    showFile(text, handle.name, handle, { reload: true });
+  });
 
   let dragDepth = 0;
   window.addEventListener('dragenter', (e) => { e.preventDefault(); dragDepth++; document.body.classList.add('dragging'); });
@@ -385,22 +511,51 @@ def mean(xs):
   window.addEventListener('drop', (e) => {
     e.preventDefault(); dragDepth = 0; document.body.classList.remove('dragging');
     const f = e.dataTransfer.files[0];
-    if (f) readFile(f);
+    if (!f) return;
+    // Asked for during the drop event itself, while the browser still allows it.
+    const item = [...e.dataTransfer.items].find((i) => i.kind === 'file');
+    const pending = item && item.getAsFileHandle ? item.getAsFileHandle().catch(() => null) : Promise.resolve(null);
+    pending.then((h) => readFile(f, h && h.kind === 'file' ? h : null));
   });
 
   document.addEventListener('paste', (e) => {
     if (e.target.closest && e.target.closest('input, select, textarea')) return;
     const t = e.clipboardData && e.clipboardData.getData('text/plain');
-    if (t && t.trim()) { e.preventDefault(); loadMarkdown(t, 'Pasted text'); }
+    if (t && t.trim()) {
+      e.preventDefault();
+      setCurrent({ name: 'Pasted text', text: t, source: 'paste', loadedAt: Date.now() });
+      loadMarkdown(t, 'Pasted text');
+    }
   });
 
   // ======================================================================
-  // 13. Start-up
+  // 13. Start-up: the last document if there is one, else the sample
   // ======================================================================
+  function savedDoc() {
+    try {
+      const d = JSON.parse(localStorage.getItem(LAST_DOC));
+      return d && typeof d.text === 'string' && typeof d.name === 'string' ? d : null;
+    } catch { return null; }
+  }
+
+  // If the browser still lets us read the file (Chrome's "Allow on every visit"), show its current version.
+  async function refreshFromDisk() {
+    const handle = await fileStore.get();
+    if (!handle || !current || current.source !== 'file' || handle.name !== current.name) return;
+    current.handle = handle;
+    try {
+      const text = await fileText(handle, false);
+      if (text != null) await showFile(text, handle.name, handle, { reload: true, quiet: true });
+    } catch { /* moved or deleted: keep the saved copy */ }
+  }
+
   if (!window.markdownit) {
     ra.setStatus('Could not load the Markdown renderer. Check your internet connection and reload.');
   } else {
-    loadMarkdown($('sample').textContent.trim(), 'Sample').then(() => {
+    const last = savedDoc();
+    if (last) current = { ...last, loadedAt: last.loadedAt || Date.now() };
+    showLoaded();
+    (last ? loadMarkdown(last.text, last.name).then(refreshFromDisk) : showSample()).then(() => {
       if (ra.needsKey()) ra.openSettings('Paste your ElevenLabs API key to use ElevenLabs voices, or switch Engine to "System voice" in Settings.');
     });
   }
