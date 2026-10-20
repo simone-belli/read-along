@@ -23,8 +23,10 @@
     mathSelector: '.math',
     displayMathSelector: '.math.display',
     tex: (el) => el.dataset.tex,
-    // visible band for "Follow": the current word is kept between these y coordinates
+    // visible band for "Follow": the current word is kept in the upper part of it
     viewport: () => ({ top: 16, bottom: window.innerHeight - 60 }),
+    // whether the status line describes the document when idle (sentence count, ElevenLabs cost)
+    summary: true,
     // called before the reader moves into a new block (e.g. to open a collapsed section)
     reveal: null,
     // whether the shortcuts (Space, ←/→, Esc, double-click to jump) are live for this event
@@ -313,9 +315,11 @@
       if (!ui.follow.checked || !range) return;
       const r = range.getBoundingClientRect();
       if (!r.width && !r.height) return;
-      const { top, bottom } = opts.viewport();
-      if (r.top < top || r.bottom > bottom) {
-        window.scrollBy({ top: r.top - (top + (bottom - top) * 0.35), behavior: 'smooth' });
+      // Keep the spoken line in the upper part of the band, where the eye rests: once it moves
+      // past 60% of the band (or above it), scroll it back to 30%.
+      const { top, bottom } = opts.viewport(), h = bottom - top;
+      if (r.top < top || r.bottom > top + h * 0.6) {
+        window.scrollBy({ top: r.top - (top + h * 0.3), behavior: 'smooth' });
       }
     }
 
@@ -919,6 +923,12 @@
       if (saved && sorted.some((v) => v.voiceURI === saved)) sel.value = saved;
     }
 
+    // what the status line says when nothing else needs saying
+    function idleStatus() {
+      if (!chunks.length) return 'Nothing to read in this document.';
+      return opts.summary ? docSummary() : '';
+    }
+
     function docSummary() {
       if (!chunks.length) return 'Nothing to read in this document.';
       let s = `${chunks.length} sentences. Space to play, double-click a sentence to start there.`;
@@ -963,7 +973,7 @@
       EL.seeked = true;
       populateVoices(); updateTime();
       if (engine() === 'eleven' && !apiKey()) openSettings('Paste your ElevenLabs API key to use ElevenLabs voices.');
-      else setStatus(docSummary());
+      else setStatus(idleStatus());
     });
     ui.voice.addEventListener('change', () => {
       if (engine() === 'eleven') {
@@ -978,7 +988,7 @@
     ui.model.addEventListener('change', () => {
       store.set('elModel', elModel());
       EL.dirty = true; EL.pending.clear();
-      if (engine() === 'eleven') { restartHere(); if (!playing) setStatus(docSummary()); }
+      if (engine() === 'eleven') { restartHere(); if (!playing) setStatus(idleStatus()); }
     });
     ui.rate.addEventListener('change', () => {
       store.set('rate', ui.rate.value);
@@ -1022,7 +1032,7 @@
       closeSettings();
       populateVoices();
       fetchElVoices(); refreshCredits();
-      setStatus('Key saved. ' + docSummary());
+      setStatus(('Key saved. ' + idleStatus()).trim());
     });
     ui.apikey.addEventListener('keydown', (e) => { if (e.key === 'Enter') ui.saveKey.click(); });
 
@@ -1127,7 +1137,7 @@
 
     return {
       refresh, play, pause, stop, setStatus, openSettings,
-      summary: docSummary,
+      summary: idleStatus,
       isPlaying: () => playing,
       needsKey: () => engine() === 'eleven' && !apiKey(),
       speakMath

@@ -105,7 +105,7 @@ def open_page(browser, key=None, url=PAGE, init=None):
     if init:
         page.add_init_script(init)
     page.goto(url)
-    page.wait_for_function("document.getElementById('status').textContent.includes('sentences')", timeout=20000)
+    page.wait_for_function(READY, timeout=20000)
     return page, fake, errors
 
 
@@ -113,6 +113,10 @@ def scrub_to(page, fraction):
     page.evaluate(f"""() => {{ const s = document.getElementById('scrub');
         s.value = Math.floor(s.max * {fraction}); s.dispatchEvent(new Event('change')); }}""")
 
+
+# The page is ready once the document is rendered and the "Rendering…" message is gone.
+READY = ("document.getElementById('doc').childElementCount > 0"
+         " && document.getElementById('status').textContent !== 'Rendering…'")
 
 WORD = "[...CSS.highlights.get('tts-word')].map(r => r.toString())"
 SENTENCE = "[...CSS.highlights.get('tts-sentence')].map(r => r.toString())[0] || ''"
@@ -125,7 +129,7 @@ def test_rendering_and_playback(browser):
     check(page.locator('mjx-container').count() >= 3, 'LaTeX is rendered by MathJax')
     check(page.is_visible('#hero .logo') and page.locator('.credit .logo').count() == 1, 'the logo is shown on the welcome page and in the footer')
     check(page.evaluate("document.querySelector('.brand .logo').getBoundingClientRect().width") > 0, 'the toolbar logo renders from the shared symbol')
-    check('credits' in page.text_content('#status'), 'cost estimate is shown for ElevenLabs')
+    check(page.text_content('#status') == '' and page.is_hidden('#status'), 'the status line is hidden when there is nothing to report')
     check(page.eval_on_selector('#engine', 'e => e.value') == 'eleven', 'engine defaults to ElevenLabs when a key is saved')
     page.wait_for_function("[...document.querySelectorAll('#voice option')].some(o => o.value === 'v_charlie')", timeout=5000)
     check(True, 'voice list is fetched from ElevenLabs')
@@ -247,7 +251,7 @@ def paste(page, text):
     page.evaluate("""(t) => { const dt = new DataTransfer(); dt.setData('text/plain', t);
         document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt })); }""", text)
     page.wait_for_function("document.getElementById('filename').textContent === 'Pasted text'"
-                           " && document.getElementById('status').textContent.includes('sentences')", timeout=20000)
+                           " && " + READY, timeout=20000)
 
 
 def test_pause_at_blocks(browser):
@@ -287,6 +291,40 @@ def test_pause_at_blocks(browser):
     page.wait_for_function("document.getElementById('status').textContent === 'Finished.'", timeout=20000)
     spoken = ' '.join(body['text'] for _, body in fake.tts_calls)
     check('Tablecell' in spoken and 'a equals b' in spoken, 'unticked, tables and formulas are read straight through')
+    check(not errors, 'no script errors' + (f': {errors}' if errors else ''))
+    page.close()
+
+
+LONG_DOC = '# Long\n\n' + '\n\n'.join(f'Paragraph {i} has a few words in it. It goes on for a second sentence.' for i in range(60))
+WORD_TOP = "[...CSS.highlights.get('tts-word')].map(r => r.getBoundingClientRect().top)[0]"
+
+
+def test_follow(browser):
+    print('\n# Follow')
+    page, fake, errors = open_page(browser, key='sk_test')
+    page.select_option('#rate', '2')
+    paste(page, LONG_DOC)
+    page.click('#play')
+    tops, top_band = [], page.evaluate("document.getElementById('toolbar').getBoundingClientRect().bottom")
+    for _ in range(14):
+        page.wait_for_timeout(1000)
+        tops.append(page.evaluate(WORD_TOP))
+    tops = [t for t in tops if t is not None]
+    height = page.evaluate('innerHeight')
+    check(page.evaluate('scrollY') > 100, 'with Follow ticked, the page scrolls along with the reading')
+    check(tops and all(top_band <= t <= height * 0.75 for t in tops),
+          'the spoken word stays in the upper part of the screen' + ('' if tops and all(top_band <= t <= height * 0.75 for t in tops) else f': {tops}'))
+
+    page.keyboard.press('Escape')
+    page.uncheck('#follow')
+    page.evaluate('scrollTo(0, 0)')
+    page.click('#play')
+    page.wait_for_timeout(14000)
+    check(page.evaluate('scrollY') == 0 and page.evaluate(WORD_TOP) > height * 0.75, 'with Follow unticked, the page stays where it is')
+    page.check('#follow')
+    page.wait_for_timeout(1500)
+    t = page.evaluate(WORD_TOP)
+    check(top_band <= t <= height * 0.75, 'ticking Follow again brings the spoken word back into view')
     check(not errors, 'no script errors' + (f': {errors}' if errors else ''))
     page.close()
 
@@ -346,7 +384,7 @@ def write_disk_file(page, text):
         await w.write(t); await w.close(); }""", text)
 
 def wait_ready(page):
-    page.wait_for_function("document.getElementById('status').textContent.includes('sentences')", timeout=20000)
+    page.wait_for_function(READY, timeout=20000)
 
 def doc_text(page):
     return page.text_content('#doc')
@@ -458,7 +496,7 @@ def test_last_document(browser):
 def main():
     with sync_playwright() as p:
         browser = p.chromium.launch(args=['--autoplay-policy=no-user-gesture-required'])
-        for test in (test_rendering_and_playback, test_key_handling, test_pause_at_blocks, test_last_document, test_embedding):
+        for test in (test_rendering_and_playback, test_key_handling, test_pause_at_blocks, test_follow, test_last_document, test_embedding):
             try:
                 test(browser)
             except Exception as e:      # a crashed test counts as a failure, the rest still run

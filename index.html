@@ -89,7 +89,14 @@
   #play:hover:not(:disabled) { background: #2a7fe0; }
   #scrub { flex: 1; min-width: 120px; accent-color: var(--accent); cursor: pointer; }
   .time { font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; min-width: 90px; text-align: right; }
-  .status { font-size: 12px; color: var(--dim); min-height: 1.2em; }
+  /* Messages only (errors, "Paused at…"): shown as a label under the toolbar, so the page never jumps */
+  .toolbar-inner { position: relative; }
+  .status {
+    position: absolute; top: calc(100% + 6px); left: 20px; max-width: calc(100% - 40px);
+    font-size: 12px; color: var(--text); background: var(--bar); backdrop-filter: blur(6px);
+    border: 1px solid var(--border); border-radius: 6px; padding: 3px 10px;
+  }
+  .status:empty { display: none; }
   .notice {
     font-size: 12px; color: var(--text); background: rgba(55, 148, 255, 0.12);
     border: 1px solid rgba(55, 148, 255, 0.35); border-radius: 6px; padding: 4px 4px 4px 10px;
@@ -363,7 +370,8 @@ def mean(xs):
   const ra = ReadAlong.create({
     root: doc,
     ui: Object.fromEntries(UI_IDS.map((id) => [id, $(id)])),
-    viewport: () => ({ top: toolbar.getBoundingClientRect().bottom + 16, bottom: window.innerHeight - 60 })
+    viewport: () => ({ top: toolbar.getBoundingClientRect().bottom + 16, bottom: window.innerHeight - 60 }),
+    summary: false
   });
 
   // ======================================================================
@@ -388,7 +396,7 @@ def mean(xs):
     if (myLoad !== loadGen) return false;
 
     ra.refresh();
-    ra.setStatus(status + ra.summary());
+    ra.setStatus(status || ra.summary());
     return true;
   }
 
@@ -458,7 +466,7 @@ def mean(xs):
       return;
     }
     setCurrent({ name, text, source: 'file', loadedAt: Date.now(), handle });
-    await loadMarkdown(text, name, same ? { keepScroll: true, status: 'Updated: the file changed on disk. ' } : {});
+    await loadMarkdown(text, name, same ? { keepScroll: true, status: 'Updated: the file changed on disk.' } : {});
   }
 
   const readFile = (f, handle = null, reload = false) => f.text().then((t) => showFile(t, f.name, handle, { reload }));
